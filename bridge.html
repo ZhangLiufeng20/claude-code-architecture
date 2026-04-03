@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bridge 通信 — Claude Code v2.1.88 架构深度解析</title>
+<meta name="description" content="基于 Source Map 逆向还原的 Claude Code 架构核心概念与源码解析">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-jsx.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-tsx.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+<script type="module">
+import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+mermaid.initialize({startOnLoad:true,theme:"dark",themeVariables:{primaryColor:"#6d28d9",primaryTextColor:"#e2e8f0",primaryBorderColor:"#7c3aed",lineColor:"#7c3aed",secondaryColor:"#1e1b4b",tertiaryColor:"#0f172a"}});
+</script>
+<style>
+
+
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#05050a;--bg2:#0a0a16;--surface:rgba(20,20,38,.5);--surface2:rgba(35,35,65,.6);--border:rgba(255,255,255,.08);--border-hover:rgba(139,92,246,.5);--text:#f8fafc;--text2:#94a3b8;--text3:#64748b;--accent:#8b5cf6;--accent2:#6d28d9;--accent3:#c084fc;--green:#10b981;--blue:#3b82f6;--orange:#f59e0b;--red:#ef4444;--pink:#ec4899;--cyan:#06b6d4;--sidebar-w:280px;--header-h:64px}
+html{scroll-behavior:smooth;scroll-padding-top:80px}
+body{font-family:'Inter',system-ui,sans-serif;background-color:var(--bg);background-image:radial-gradient(circle at 15% 0%,rgba(139,92,246,.15) 0,transparent 30%),radial-gradient(circle at 85% 10%,rgba(6,182,212,.1) 0,transparent 30%);background-attachment:fixed;color:var(--text);line-height:1.7;overflow-x:hidden}
+::-webkit-scrollbar{width:6px}
+::-webkit-scrollbar-track{background:rgba(0,0,0,.2)}
+::-webkit-scrollbar-thumb{background:var(--surface2);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:var(--accent)}
+a{color:var(--accent3);text-decoration:none;transition:color .2s}
+a:hover{color:var(--cyan)}
+code{font-family:'JetBrains Mono',monospace}
+/* Header */
+.header{position:fixed;top:0;left:0;right:0;height:var(--header-h);background:rgba(5,5,10,.6);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 24px;z-index:100;gap:16px}
+.header .logo{font-size:22px;font-weight:900;letter-spacing:-.5px;background:linear-gradient(135deg,#c084fc,#38bdf8,#818cf8);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.header .version{font-size:12px;padding:2px 10px;border-radius:99px;background:var(--surface);color:var(--accent3);border:1px solid var(--border);font-weight:600;box-shadow:inset 0 1px 0 rgba(255,255,255,.1)}
+.header .search-box{flex:1;max-width:400px;margin-left:auto}
+.header .search-box input{width:100%;padding:10px 16px;border-radius:12px;border:1px solid var(--border);background:var(--surface);backdrop-filter:blur(10px);color:var(--text);font-size:14px;outline:none;transition:all .3s ease;box-shadow:inset 0 1px 2px rgba(0,0,0,.2)}
+.header .search-box input:focus{border-color:var(--accent);background:rgba(20,20,40,.8);box-shadow:0 0 0 4px rgba(139,92,246,.1)}
+.menu-btn{display:none;background:none;border:none;color:var(--text);font-size:24px;cursor:pointer}
+/* Sidebar */
+.sidebar{position:fixed;left:0;top:var(--header-h);bottom:0;width:var(--sidebar-w);background:rgba(10,10,22,.6);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-right:1px solid var(--border);overflow-y:auto;padding:20px 0;z-index:90;transition:transform .3s cubic-bezier(.4,0,.2,1)}
+.sidebar .nav-group{margin-bottom:12px}
+.sidebar .nav-group-title{padding:10px 20px;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:rgba(255,255,255,.3)}
+.sidebar .nav-item{display:block;padding:8px 20px 8px 28px;font-size:13px;font-weight:500;color:var(--text2);transition:all .25s ease;border-left:3px solid transparent;cursor:pointer}
+.sidebar .nav-item:hover{color:#fff;background:linear-gradient(90deg,var(--surface),transparent)}
+.sidebar .nav-item.active{color:var(--accent3);border-left-color:var(--accent);background:linear-gradient(90deg,rgba(139,92,246,.1),transparent);text-shadow:0 0 8px rgba(192,132,252,.3)}
+/* Main */
+.main{margin-left:var(--sidebar-w);margin-top:var(--header-h);padding:40px 60px 80px;max-width:1040px}
+/* Sections */
+.section{margin-bottom:80px;animation:fadeIn .6s cubic-bezier(.16,1,.3,1)}
+@keyframes fadeIn{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:translateY(0)}}
+.section-title{font-size:32px;font-weight:900;letter-spacing:-.5px;margin-bottom:32px;padding-bottom:16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;position:relative}
+.section-title::after{content:'';position:absolute;left:0;bottom:-1px;height:1px;width:100px;background:linear-gradient(90deg,var(--accent),transparent)}
+.section-title .icon{font-size:32px;filter:drop-shadow(0 0 12px rgba(139,92,246,.4))}
+.section-title .num{font-size:13px;padding:4px 12px;border-radius:99px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;font-weight:700;box-shadow:0 4px 12px rgba(109,40,217,.3)}
+h3{font-size:22px;font-weight:800;letter-spacing:-.3px;margin:36px 0 16px;background:linear-gradient(135deg,#fff,#cbd5e1);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+h4{font-size:16px;font-weight:700;margin:24px 0 10px;color:var(--accent3)}
+p{margin-bottom:16px;color:var(--text2);font-size:15px}
+ul,ol{margin:12px 0 20px 24px;color:var(--text2);font-size:15px}
+li{margin-bottom:6px}
+li::marker{color:var(--accent)}
+strong{color:#fff;font-weight:600}
+/* Cards */
+.card{background:var(--surface);backdrop-filter:blur(16px);border:1px solid var(--border);border-radius:16px;padding:24px;margin:20px 0;transition:all .4s cubic-bezier(.16,1,.3,1);box-shadow:0 4px 20px rgba(0,0,0,.2),inset 0 1px 0 rgba(255,255,255,.05)}
+.card:hover{transform:translateY(-4px);border-color:var(--border-hover);box-shadow:0 12px 40px rgba(0,0,0,.4),0 0 20px rgba(139,92,246,.15),inset 0 1px 0 rgba(255,255,255,.1)}
+.card-title{font-size:18px;font-weight:800;margin-bottom:12px;color:#fff}
+/* Stats Grid */
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin:24px 0}
+.stat-card{background:var(--surface);backdrop-filter:blur(16px);border:1px solid var(--border);border-radius:16px;padding:24px;text-align:center;transition:all .4s ease;box-shadow:inset 0 1px 0 rgba(255,255,255,.02)}
+.stat-card:hover{transform:translateY(-4px) scale(1.02);border-color:var(--border-hover);background:linear-gradient(180deg,rgba(35,35,65,.8),rgba(20,20,38,.5))}
+.stat-card .value{font-size:36px;font-weight:900;letter-spacing:-1px;background:linear-gradient(135deg,#c084fc,#38bdf8);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;filter:drop-shadow(0 2px 8px rgba(56,189,248,.3))}
+.stat-card .label{font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--text3);margin-top:8px}
+/* Table */
+table{width:100%;border-collapse:separate;border-spacing:0;margin:24px 0;font-size:14px;border-radius:12px;overflow:hidden;border:1px solid var(--border);background:var(--surface)}
+th{background:rgba(255,255,255,.03);padding:14px 18px;text-align:left;font-weight:700;color:var(--accent3);border-bottom:1px solid var(--border)}
+td{padding:14px 18px;border-bottom:1px solid var(--border);color:var(--text2)}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:rgba(255,255,255,.02)}
+/* Code blocks / Collapsible */
+pre[class*="language-"]{border-radius:12px!important;margin:16px 0!important;border:1px solid var(--border)!important;font-size:13px!important;background:#0d0d16!important;box-shadow:inset 0 2px 10px rgba(0,0,0,.4)}
+.collapsible{margin:16px 0;border-radius:12px;overflow:hidden;border:1px solid var(--border);background:var(--surface);transition:border-color .3s;box-shadow:inset 0 1px 0 rgba(255,255,255,.05)}
+.collapsible:hover{border-color:var(--border-hover)}
+.collapsible-header{display:flex;align-items:center;gap:12px;padding:14px 20px;cursor:pointer;font-size:14px;font-weight:700;color:#fff;transition:all .3s;user-select:none;background:rgba(255,255,255,.02)}
+.collapsible-header:hover{background:rgba(255,255,255,.05)}
+.collapsible-header .arrow{transition:transform .3s cubic-bezier(.4,0,.2,1);font-size:12px;color:var(--text3)}
+.collapsible-header.open .arrow{transform:rotate(90deg);color:var(--accent3)}
+.collapsible-body{display:none;border-top:1px solid var(--border);background:#0d0d16}
+.collapsible-body.show{display:block;animation:slideDown .3s ease}
+@keyframes slideDown{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:translateY(0)}}
+.collapsible-body pre{margin:0!important;border:none!important;border-radius:0!important;box-shadow:none}
+/* Tags */
+.tag{display:inline-block;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:700;letter-spacing:.5px;margin:2px 4px 2px 0;text-transform:uppercase}
+.tag-purple{background:rgba(192,132,252,.15);color:#d8b4fe;border:1px solid rgba(192,132,252,.3)}
+.tag-green{background:rgba(16,185,129,.15);color:#6ee7b7;border:1px solid rgba(16,185,129,.3)}
+.tag-blue{background:rgba(59,130,246,.15);color:#93c5fd;border:1px solid rgba(59,130,246,.3)}
+.tag-orange{background:rgba(245,158,11,.15);color:#fcd34d;border:1px solid rgba(245,158,11,.3)}
+.tag-red{background:rgba(239,68,68,.15);color:#fca5a5;border:1px solid rgba(239,68,68,.3)}
+.tag-cyan{background:rgba(6,182,212,.15);color:#67e8f9;border:1px solid rgba(6,182,212,.3)}
+.tag-pink{background:rgba(236,72,153,.15);color:#f9a8d4;border:1px solid rgba(236,72,153,.3)}
+/* Mermaid */
+.mermaid{margin:24px 0;padding:24px;background:var(--surface);backdrop-filter:blur(10px);border:1px solid var(--border);border-radius:16px;overflow-x:auto;box-shadow:inset 0 1px 0 rgba(255,255,255,.05);transition:border-color .3s}
+.mermaid:hover{border-color:rgba(139,92,246,.3)}
+/* Tips */
+.tip{padding:16px 20px;border-radius:12px;margin:20px 0;font-size:14.5px;border:1px solid var(--border);border-left:4px solid;backdrop-filter:blur(10px)}
+.tip-info{background:rgba(59,130,246,.05);border-left-color:var(--blue);border-color:rgba(59,130,246,.2)}
+.tip-warn{background:rgba(245,158,11,.05);border-left-color:var(--orange);border-color:rgba(245,158,11,.2)}
+.tip-key{background:rgba(139,92,246,.05);border-left-color:var(--accent);border-color:rgba(139,92,246,.2);box-shadow:0 4px 20px rgba(139,92,246,.05)}
+/* Back to top */
+.back-top{position:fixed;bottom:32px;right:32px;width:48px;height:48px;border-radius:50%;background:linear-gradient(135deg,var(--accent2),var(--accent));color:#fff;border:none;font-size:22px;cursor:pointer;display:none;align-items:center;justify-content:center;box-shadow:0 8px 24px rgba(109,40,217,.4),inset 0 1px 0 rgba(255,255,255,.2);transition:all .3s cubic-bezier(.16,1,.3,1);z-index:99}
+.back-top:hover{transform:translateY(-6px);box-shadow:0 12px 32px rgba(109,40,217,.6),inset 0 1px 0 rgba(255,255,255,.3)}
+.back-top.show{display:flex}
+/* Responsive */
+@media(max-width:900px){
+.sidebar{transform:translateX(-100%)}
+.sidebar.open{transform:translateX(0)}
+.main{margin-left:0;padding:24px 20px 80px}
+.menu-btn{display:block}
+:root{--sidebar-w:260px}
+.section-title{font-size:26px}
+.stats-grid{grid-template-columns:1fr}
+}
+/* File tree */
+.file-tree{font-family:'JetBrains Mono',monospace;font-size:13px;background:rgba(10,10,16,.8);border:1px solid var(--border);border-radius:12px;padding:20px;margin:16px 0;line-height:1.9;box-shadow:inset 0 2px 10px rgba(0,0,0,.3)}
+.file-tree .dir{color:var(--accent3);font-weight:600}
+.file-tree .file{color:var(--text2)}
+.file-tree .comment{color:var(--text3);font-style:italic}
+/* Flow arrow */
+.flow-step{display:flex;align-items:center;gap:16px;margin:10px 0;padding:12px 20px;background:var(--surface);border:1px solid var(--border);border-radius:12px;font-size:14.5px;transition:transform .2s;box-shadow:inset 0 1px 0 rgba(255,255,255,.02)}
+.flow-step:hover{transform:translateX(4px);border-color:var(--border-hover)}
+.flow-step .step-num{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,var(--accent2),var(--accent));color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;flex-shrink:0;box-shadow:0 2px 8px rgba(109,40,217,.3)}
+.flow-arrow{text-align:center;color:var(--accent3);font-size:20px;margin:6px 0;opacity:.7}
+/* Inline code */
+:not(pre)>code{background:rgba(255,255,255,.05);padding:3px 8px;border-radius:6px;font-size:13px;color:#c084fc;border:1px solid rgba(255,255,255,.05)}
+
+
+</style>
+</head>
+<body>
+<header class="header">
+  <button class="menu-btn" onclick="document.querySelector('.sidebar').classList.toggle('open')">&#9776;</button>
+  <div class="logo"><a href="index.html">Claude Code 架构解析</a></div>
+  <span class="version">v2.1.88</span>
+  <div class="search-box"><input type="text" id="searchInput" placeholder="&#x1F50D; 搜索章节内容..." oninput="handleSearch(this.value)"></div>
+</header>
+<nav class="sidebar" id="sidebar">
+
+  <div class="nav-group">
+    <div class="nav-group-title">概览</div>
+    <a class="nav-item" href="index.html#overview">📋 项目概览</a>
+    <a class="nav-item" href="index.html#structure">📁 目录结构</a>
+    <a class="nav-item" href="index.html#arch">🏗️ 架构分层</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">核心引擎</div>
+    <a class="nav-item" href="core-engine.html#startup">🚀 启动流程</a>
+    <a class="nav-item" href="core-engine.html#tool-system">🔧 Tool 系统</a>
+    <a class="nav-item" href="core-engine.html#bash-security">🛡️ 安全沙箱</a>
+    <a class="nav-item" href="core-engine.html#query-loop">🔄 Query Loop</a>
+    <a class="nav-item" href="core-engine.html#query-engine">⚙️ QueryEngine</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">入口与引导</div>
+    <a class="nav-item" href="entrypoints.html#entrypoints">🚪 入口引导层</a>
+    <a class="nav-item" href="entrypoints.html#cli-bootstrap" style="padding-left:40px;font-size:12px;opacity:.7">↳ CLI Fast-Path</a>
+    <a class="nav-item" href="entrypoints.html#init-chain" style="padding-left:40px;font-size:12px;opacity:.7">↳ 初始化管线</a>
+    <a class="nav-item" href="entrypoints.html#mcp-server" style="padding-left:40px;font-size:12px;opacity:.7">↳ MCP Server</a>
+    <a class="nav-item" href="entrypoints.html#agent-sdk" style="padding-left:40px;font-size:12px;opacity:.7">↳ Agent SDK</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">子系统</div>
+    <a class="nav-item" href="subsystems.html#commands">💬 命令系统</a>
+    <a class="nav-item" href="subsystems.html#permissions">🔐 权限系统</a>
+    <a class="nav-item" href="subsystems.html#state">📦 状态管理</a>
+    <a class="nav-item" href="subsystems.html#api">🌐 API 通信</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">高级特性</div>
+    <a class="nav-item" href="advanced.html#coordinator">🤖 多Agent协调</a>
+    <a class="nav-item" href="advanced.html#mcp">🔌 MCP 集成</a>
+    <a class="nav-item" href="advanced.html#tasks">⚙️ 后台任务</a>
+    <a class="nav-item" href="advanced.html#plugins">📦 插件与技能</a>
+    <a class="nav-item" href="advanced.html#feature-flags">🚩 Feature Flags</a>
+    <a class="nav-item" href="context.html#context">🧠 上下文管理</a>
+    <a class="nav-item" href="context.html#ctx-search" style="padding-left:40px;font-size:12px;opacity:.7">↳ Grep vs RAG</a>
+    <a class="nav-item" href="context.html#ctx-memory" style="padding-left:40px;font-size:12px;opacity:.7">↳ 6层记忆体系</a>
+    <a class="nav-item" href="context.html#ctx-recall" style="padding-left:40px;font-size:12px;opacity:.7">↳ LLM 记忆召回</a>
+    <a class="nav-item" href="context.html#ctx-sysprompt" style="padding-left:40px;font-size:12px;opacity:.7">↳ System Prompt</a>
+    <a class="nav-item" href="context.html#ctx-decisions" style="padding-left:40px;font-size:12px;opacity:.7">↳ 设计决策表</a>
+    <a class="nav-item" href="ui-components.html#ui">🎨 UI 渲染</a>
+    <a class="nav-item" href="ui-components.html#ui-compiler" style="padding-left:40px;font-size:12px;opacity:.7">↳ React Compiler</a>
+    <a class="nav-item" href="ui-components.html#ui-messages" style="padding-left:40px;font-size:12px;opacity:.7">↳ 消息管线</a>
+    <a class="nav-item" href="ui-components.html#ui-virtual" style="padding-left:40px;font-size:12px;opacity:.7">↳ 虚拟滚动</a>
+    <a class="nav-item" href="ui-components.html#ui-fullscreen" style="padding-left:40px;font-size:12px;opacity:.7">↳ 全屏布局</a>
+    <a class="nav-item" href="ui-components.html#ui-perf" style="padding-left:40px;font-size:12px;opacity:.7">↳ 性能工程</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">基础设施</div>
+    <a class="nav-item" href="utils-infra.html#infra">🔩 基础设施</a>
+    <a class="nav-item" href="utils-infra.html#infra-session" style="padding-left:40px;font-size:12px;opacity:.7">↳ 会话持久化</a>
+    <a class="nav-item" href="utils-infra.html#infra-messages" style="padding-left:40px;font-size:12px;opacity:.7">↳ 消息系统</a>
+    <a class="nav-item" href="utils-infra.html#infra-hooks" style="padding-left:40px;font-size:12px;opacity:.7">↳ Hook 引擎</a>
+    <a class="nav-item" href="utils-infra.html#infra-config" style="padding-left:40px;font-size:12px;opacity:.7">↳ 配置与认证</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">React Hooks</div>
+    <a class="nav-item" href="hooks-system.html#hooks">🪝 React Hooks</a>
+    <a class="nav-item" href="hooks-system.html#hooks-input" style="padding-left:40px;font-size:12px;opacity:.7">↳ 输入管线</a>
+    <a class="nav-item" href="hooks-system.html#hooks-virtual" style="padding-left:40px;font-size:12px;opacity:.7">↳ 虚拟滚动</a>
+    <a class="nav-item" href="hooks-system.html#hooks-voice" style="padding-left:40px;font-size:12px;opacity:.7">↳ 语音子系统</a>
+    <a class="nav-item" href="hooks-system.html#hooks-collab" style="padding-left:40px;font-size:12px;opacity:.7">↳ 协作通信</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">渲染引擎</div>
+    <a class="nav-item" href="ink-engine.html#ink">🖼️ Ink 渲染引擎</a>
+    <a class="nav-item" href="ink-engine.html#ink-dom" style="padding-left:40px;font-size:12px;opacity:.7">↳ 自定义 DOM</a>
+    <a class="nav-item" href="ink-engine.html#ink-pipeline" style="padding-left:40px;font-size:12px;opacity:.7">↳ 渲染管线</a>
+    <a class="nav-item" href="ink-engine.html#ink-screen" style="padding-left:40px;font-size:12px;opacity:.7">↳ 屏幕缓冲区</a>
+    <a class="nav-item" href="ink-engine.html#ink-interact" style="padding-left:40px;font-size:12px;opacity:.7">↳ 全屏交互</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">插件系统</div>
+    <a class="nav-item" href="advanced.html#plugins">🔌 插件系统</a>
+    <a class="nav-item" href="advanced.html#plugins-loader" style="padding-left:40px;font-size:12px;opacity:.7">↳ 发现与加载</a>
+    <a class="nav-item" href="advanced.html#plugins-marketplace" style="padding-left:40px;font-size:12px;opacity:.7">↳ Marketplace</a>
+    <a class="nav-item" href="advanced.html#plugins-schema" style="padding-left:40px;font-size:12px;opacity:.7">↳ Schema 安全</a>
+    <a class="nav-item" href="advanced.html#plugins-lifecycle" style="padding-left:40px;font-size:12px;opacity:.7">↳ 验证生命周期</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">Bridge 通信</div>
+    <a class="nav-item" href="bridge.html#bridge">🌉 Bridge 通信</a>
+    <a class="nav-item" href="bridge.html#bridge-api" style="padding-left:40px;font-size:12px;opacity:.7">↳ 环境与轮询</a>
+    <a class="nav-item" href="bridge.html#bridge-repl" style="padding-left:40px;font-size:12px;opacity:.7">↳ REPL Bridge</a>
+    <a class="nav-item" href="bridge.html#bridge-messaging" style="padding-left:40px;font-size:12px;opacity:.7">↳ 消息路由</a>
+    <a class="nav-item" href="bridge.html#bridge-transport" style="padding-left:40px;font-size:12px;opacity:.7">↳ 传输与安全</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">核心服务层</div>
+    <a class="nav-item" href="services-deep.html#services">🔗 核心服务层</a>
+    <a class="nav-item" href="services-deep.html#svc-api" style="padding-left:40px;font-size:12px;opacity:.7">↳ API 通信核心</a>
+    <a class="nav-item" href="services-deep.html#svc-retry" style="padding-left:40px;font-size:12px;opacity:.7">↳ 重试引擎</a>
+    <a class="nav-item" href="services-deep.html#svc-errors" style="padding-left:40px;font-size:12px;opacity:.7">↳ 错误分类</a>
+    <a class="nav-item" href="services-deep.html#svc-mcp" style="padding-left:40px;font-size:12px;opacity:.7">↳ MCP 客户端</a>
+    <a class="nav-item" href="services-deep.html#svc-compact" style="padding-left:40px;font-size:12px;opacity:.7">↳ 上下文压缩</a>
+    <a class="nav-item" href="services-deep.html#svc-cache" style="padding-left:40px;font-size:12px;opacity:.7">↳ 缓存检测</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">工具系统</div>
+    <a class="nav-item" href="tools-deep.html#tools-system">🛠️ 工具系统</a>
+    <a class="nav-item" href="tools-deep.html#tools-bash" style="padding-left:40px;font-size:12px;opacity:.7">↳ BashTool 深剖</a>
+    <a class="nav-item" href="tools-deep.html#tools-panorama" style="padding-left:40px;font-size:12px;opacity:.7">↳ 38 工具全景</a>
+    <a class="nav-item" href="tools-deep.html#tools-client" style="padding-left:40px;font-size:12px;opacity:.7">↳ 多云客户端</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">权限与安全</div>
+    <a class="nav-item" href="tools-deep.html#perm-engine">🛡️ 权限决策引擎</a>
+    <a class="nav-item" href="tools-deep.html#perm-pipeline" style="padding-left:40px;font-size:12px;opacity:.7">↳ 决策管线</a>
+    <a class="nav-item" href="tools-deep.html#perm-yolo" style="padding-left:40px;font-size:12px;opacity:.7">↳ Auto Mode 分类器</a>
+    <a class="nav-item" href="tools-deep.html#perm-modes" style="padding-left:40px;font-size:12px;opacity:.7">↳ 权限模式</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">常量与命令</div>
+    <a class="nav-item" href="config-cmd.html#config-cmd">📜 常量与命令</a>
+    <a class="nav-item" href="config-cmd.html#config-constants" style="padding-left:40px;font-size:12px;opacity:.7">↳ 常量系统</a>
+    <a class="nav-item" href="config-cmd.html#config-commands" style="padding-left:40px;font-size:12px;opacity:.7">↳ 命令系统</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">Agent 与状态</div>
+    <a class="nav-item" href="agent-coord.html#agent-coord">🤖 Agent 协调层</a>
+    <a class="nav-item" href="agent-coord.html#agent-lifecycle" style="padding-left:40px;font-size:12px;opacity:.7">↳ 生命周期</a>
+    <a class="nav-item" href="agent-coord.html#agent-modes" style="padding-left:40px;font-size:12px;opacity:.7">↳ 多智能体模式</a>
+    <a class="nav-item" href="subsystems.html#state-ctx">📊 状态与上下文</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">CLI 与运行时</div>
+    <a class="nav-item" href="cli-transport.html#cli-transport">🖥️ CLI 与传输层</a>
+    <a class="nav-item" href="analytics-ff.html#analytics-ff">📈 分析与特性开关</a>
+    <a class="nav-item" href="model-shell.html#model-shell">🔧 模型与 Shell</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">类型与任务</div>
+    <a class="nav-item" href="types-tasks.html#type-system">📝 类型系统</a>
+    <a class="nav-item" href="types-tasks.html#task-migration">⚙️ 任务与迁移</a>
+  </div>
+
+</nav>
+<main class="main" id="mainContent">
+
+<section class="section" id="bridge">
+<h2 class="section-title"><span class="icon">🌉</span> Bridge 通信层 <span class="num">22</span></h2>
+
+<div class="tip tip-info">
+  <strong>🔬 方法论：</strong>本章对 <code>bridge/</code> 目录 31 个文件（~10,000+ 行）进行源码级分析，重点解析 bridgeApi、replBridge、bridgeMessaging 三大核心模块。
+</div>
+
+<p>Claude Code 的 Bridge 通信层实现了 CLI ↔ claude.ai 的实时双向通信，支撑「Remote Control」功能——用户可在手机/浏览器上给本地 Claude Code 发指令。</p>
+
+<div class="stats-grid">
+  <div class="stat-card"><div class="value">31</div><div class="label">源文件总数</div></div>
+  <div class="stat-card"><div class="value">8</div><div class="label">REST API 端点</div></div>
+  <div class="stat-card"><div class="value">2,407</div><div class="label">replBridge 行数</div></div>
+  <div class="stat-card"><div class="value">3</div><div class="label">重连策略层级</div></div>
+</div>
+
+<!-- 22.1 环境注册与轮询 -->
+<h3 id="bridge-api" style="margin-top:2rem;">22.1 环境注册与轮询</h3>
+
+<p><code>bridgeApi.ts</code>（540 行）封装了 Bridge 的 8 个 REST 端点，所有请求都通过 <code>withOAuthRetry</code> 实现 401 自动重试。</p>
+
+<div class="mermaid">
+sequenceDiagram
+    participant CLI as Claude Code CLI
+    participant API as Bridge API<br>bridgeApi.ts
+    participant Server as Anthropic Server
+    CLI->>API: registerBridgeEnvironment
+    API->>Server: POST /v1/environments/bridge
+    Server-->>API: environment_id + secret
+    loop Poll 循环
+        CLI->>API: pollForWork(env_id, secret)
+        API->>Server: GET .../work/poll
+        alt 有工作
+            Server-->>API: WorkResponse(id, data, token)
+            CLI->>API: acknowledgeWork(work_id)
+        else at-capacity
+            CLI->>API: heartbeatWork(work_id)
+            Server-->>API: lease_extended + state
+        end
+    end
+    CLI->>API: stopWork / deregisterEnvironment
+</div>
+
+<table>
+  <thead><tr><th>端点</th><th>方法</th><th>用途</th><th>错误处理</th></tr></thead>
+  <tbody>
+    <tr><td><code>/v1/environments/bridge</code></td><td>POST</td><td>注册 Bridge 环境（发送 machine_name, dir, branch, worker_type）</td><td>支持 reuseEnvironmentId 幂等重注册</td></tr>
+    <tr><td><code>.../work/poll</code></td><td>GET</td><td>轮询工作项（每 N 次空轮询才记日志，降噪）</td><td>404 → 环境已过期</td></tr>
+    <tr><td><code>.../work/{id}/ack</code></td><td>POST</td><td>确认工作项已被处理</td><td>—</td></tr>
+    <tr><td><code>.../work/{id}/stop</code></td><td>POST</td><td>释放工作项（force=true 强制终止）</td><td>OAuth 重试</td></tr>
+    <tr><td><code>.../work/{id}/heartbeat</code></td><td>POST</td><td>租约续期，返回 lease_extended + state</td><td>lease 过期 → 重连</td></tr>
+    <tr><td><code>/v1/environments/bridge/{id}</code></td><td>DELETE</td><td>注销环境</td><td>OAuth 重试</td></tr>
+    <tr><td><code>/v1/sessions/{id}/archive</code></td><td>POST</td><td>归档会话（409 = 已归档，幂等）</td><td>OAuth 重试</td></tr>
+    <tr><td><code>.../bridge/reconnect</code></td><td>POST</td><td>重连现有会话到环境</td><td>尝试 session_*/cse_* 两种 ID 格式</td></tr>
+  </tbody>
+</table>
+
+<h4>bridgeApi 安全设计</h4>
+<ul>
+  <li><strong>URL 路径注入防护</strong>：<code>SAFE_ID_PATTERN = /^[a-zA-Z0-9_-]+$/</code> 校验所有 Bridge ID</li>
+  <li><strong>OAuth 401 自动重试</strong>：<code>withOAuthRetry</code> 模式与 <code>withRetry.ts</code> 一致——刷新 token 后重试一次</li>
+  <li><strong>分级错误处理</strong>：401 → BridgeFatalError(auth)；403 → isExpiredErrorType 检查；404 → 环境过期；410 → 注销；429 → 限流</li>
+</ul>
+
+<div class="collapsible" onclick="toggleCollapsible(this)">🔒 bridgeApi 安全设计</div>
+<div class="collapsible-body">
+<pre><code class="language-typescript">// URL 路径注入防护
+const SAFE_ID_PATTERN = /^[a-zA-Z0-9_-]+$/
+function validateBridgeId(id: string, label: string): string {
+  if (!id || !SAFE_ID_PATTERN.test(id)) {
+    throw new Error(`Invalid ${label}: contains unsafe characters`)
+  }
+  return id
+}
+
+// OAuth 401 自动重试（与 withRetry.ts 相同模式）
+async function withOAuthRetry(fn, context) {
+  const response = await fn(accessToken)
+  if (response.status !== 401) return response
+  // 尝试刷新 token
+  const refreshed = await deps.onAuth401(accessToken)
+  if (refreshed) {
+    return await fn(resolveAuth()) // 重试一次
+  }
+  return response // 交给 handleErrorStatus 抛 BridgeFatalError
+}
+
+// 分级错误处理
+// 401 → BridgeFatalError(auth)
+// 403 → 检查 isExpiredErrorType + isSuppressible403
+// 404 → BridgeFatalError(not found)
+// 410 → 环境过期
+// 429 → 限流
+// 其他 → 通用 Error</code></pre>
+</div>
+
+<!-- 22.2 REPL Bridge 核心 -->
+<h3 id="bridge-repl" style="margin-top:2rem;">22.2 REPL Bridge 核心</h3>
+
+<p><code>replBridge.ts</code>（2,407 行）是单 CLI 会话的 Bridge 核心。它管理环境注册 → 会话创建 → Poll 循环 → Ingress WebSocket → 优雅关闭的完整生命周期。</p>
+
+<h4>3 层重连策略详解</h4>
+
+<div class="mermaid">
+stateDiagram-v2
+    [*] --> Ready: initBridgeCore
+    Ready --> Connected: pollForWork 收到 work
+    Connected --> Connected: heartbeatWork 续期
+    Connected --> Reconnecting: 环境丢失 / WS 异常关闭
+    Reconnecting --> Connected: tryReconnectInPlace 成功
+    Reconnecting --> Connected: fresh session 回退成功
+    Reconnecting --> Failed: 超过 MAX_ENVIRONMENT_RECREATIONS
+    Connected --> [*]: teardown
+    Failed --> [*]
+</div>
+
+<table>
+  <thead><tr><th>机制</th><th>实现</th><th>设计意图</th></tr></thead>
+  <tbody>
+    <tr><td><strong>3 层重连</strong></td><td><code>doReconnect</code></td><td>① tryReconnectInPlace（同 env 重连，URL 不变）→ ② fresh session（新会话）→ ③ give up（超 3 次）</td></tr>
+    <tr><td><strong>BoundedUUIDSet</strong></td><td>环形缓冲区（容量 2000）</td><td>Echo 过滤（recentPostedUUIDs）+ 重投去重（recentInboundUUIDs），O(1) add/has，O(capacity) 内存</td></tr>
+    <tr><td><strong>FlushGate</strong></td><td><code>flushGate.ts</code></td><td>初始消息刷送期间排队新消息，防止乱序到达服务器</td></tr>
+    <tr><td><strong>SSE 序列号记忆</strong></td><td><code>lastTransportSequenceNum</code></td><td>跨传输保持，重连时告知服务器已收到的最后事件 → 避免全量重播</td></tr>
+    <tr><td><strong>Perpetual 模式</strong></td><td><code>bridgePointer.ts</code></td><td>crash-recovery 指针（sessionId + environmentId），进程崩溃后可恢复</td></tr>
+    <tr><td><strong>CapacityWake</strong></td><td><code>capacityWake.ts</code></td><td>会话完成 / WS 断开 → 信号唤醒 poll 休眠，立即切换到快速轮询</td></tr>
+  </tbody>
+</table>
+
+<div class="collapsible" onclick="toggleCollapsible(this)">🔄 3 层重连策略 — doReconnect 深度解析</div>
+<div class="collapsible-body">
+<pre><code class="language-text">doReconnect() 流程：
+
+1. 递增 environmentRecreations（超过 3 次 → 放弃）
+2. 递增 v2Generation（使过时的 v2 传输握手失效）
+3. 关闭旧 transport → 保存 SSE 序列号
+4. wakePollLoop（唤醒 at-capacity 休眠）
+5. flushGate.drop（重置保序门控）
+6. 释放 currentWorkId（best-effort stopWork）
+
+策略 1：同环境原地重连
+  ├── re-register with reuseEnvironmentId
+  ├── 如果 got == requested → tryReconnectInPlace
+  │   ├── reconnectSession(session_* ID)
+  │   └── reconnectSession(cse_* ID)  ← CCR v2 兼容
+  └── 成功 → URL 不变，previouslyFlushedUUIDs 保留
+
+策略 2：新会话回退
+  ├── archiveSession(旧会话)
+  ├── getCurrentTitle（可能被 /rename 修改）
+  ├── createSession(新会话)
+  └── 重置 SSE 序列号（新会话从 1 开始）
+
+并发安全：
+  ├── reconnectPromise 保证单次执行
+  ├── 每个 await 点后检查 pollController.signal.aborted
+  └── v2Generation 检测过时的传输握手</code></pre>
+</div>
+
+<!-- 22.3 消息路由 -->
+<h3 id="bridge-messaging" style="margin-top:2rem;">22.3 消息路由</h3>
+
+<p><code>bridgeMessaging.ts</code>（462 行）是纯函数消息路由层——无闭包状态依赖，所有协作者通过参数注入。</p>
+
+<h4>消息路由架构</h4>
+
+<table>
+  <thead><tr><th>函数</th><th>职责</th><th>关键行为</th></tr></thead>
+  <tbody>
+    <tr><td><code>handleIngressMessage</code></td><td>入站消息路由</td><td>① control_response → onPermissionResponse ② control_request → handleServerControlRequest ③ SDKMessage 去重后转发</td></tr>
+    <tr><td><code>handleServerControlRequest</code></td><td>服务器控制命令响应</td><td>5 种 subtype：initialize / set_model / interrupt / set_permission_mode / set_max_thinking_tokens</td></tr>
+    <tr><td><code>isEligibleBridgeMessage</code></td><td>出站过滤</td><td>只转发 user/assistant/system(local_command)，过滤 tool_result、progress 等内部消息</td></tr>
+    <tr><td><code>extractTitleText</code></td><td>标题提取</td><td>跳过 meta/toolResult/compactSummary/非人类来源/纯 displayTag</td></tr>
+    <tr><td><code>makeResultMessage</code></td><td>构建归档事件</td><td>SDKResultSuccess + EMPTY_USAGE，WS 关闭前发送触发服务器归档</td></tr>
+    <tr><td><code>BoundedUUIDSet</code></td><td>去重环形缓冲区</td><td>FIFO 驱逐最旧条目，O(1) add/has，O(capacity) 恒定内存</td></tr>
+  </tbody>
+</table>
+
+<div class="collapsible" onclick="toggleCollapsible(this)">📡 控制命令处理 — outboundOnly 模式</div>
+<div class="collapsible-body">
+<pre><code class="language-typescript">// 服务器控制命令处理（10-14s 超时 — 必须及时响应）
+function handleServerControlRequest(request, handlers) {
+  // outbound-only 模式（仅输出，不接受输入）
+  // → initialize 必须成功（否则服务器断开连接）
+  // → 其他命令返回 error 控制响应
+  if (outboundOnly && request.request.subtype !== 'initialize') {
+    response = { type: 'control_response', response: {
+      subtype: 'error', request_id: ...,
+      error: 'This session is outbound-only...'
+    }}
+  }
+
+  // 正常模式 5 种命令：
+  // initialize   → 返回 commands=[], models=[], pid
+  // set_model    → 调用 onSetModel
+  // interrupt    → 调用 onInterrupt
+  // set_permission_mode → 策略校验后调用 onSetPermissionMode
+  // set_max_thinking_tokens → 调用 onSetMaxThinkingTokens
+  // 未知 subtype → error 响应（防止服务器挂起）
+}</code></pre>
+</div>
+
+<!-- 22.4 传输与安全 -->
+<h3 id="bridge-transport" style="margin-top:2rem;">22.4 传输与安全</h3>
+
+<p>传输层实现了 v1/v2 双协议架构和多层安全机制。</p>
+
+<h4>v1 vs v2 传输协议对比</h4>
+
+<table>
+  <thead><tr><th>组件</th><th>文件</th><th>职责</th></tr></thead>
+  <tbody>
+    <tr><td><strong>v1 传输</strong></td><td><code>replBridgeTransport.ts</code></td><td>HybridTransport：WebSocket 读 + HTTP POST 写到 Session-Ingress</td></tr>
+    <tr><td><strong>v2 传输</strong></td><td><code>replBridgeTransport.ts</code></td><td>SSETransport 读 + CCRClient POST 写到 CCR /worker/*</td></tr>
+    <tr><td><strong>协议选择</strong></td><td><code>workSecret.ts</code></td><td>服务器驱动（secret.use_code_sessions），CLAUDE_BRIDGE_USE_CCR_V2 覆盖</td></tr>
+    <tr><td><strong>JWT 管理</strong></td><td><code>jwtUtils.ts</code></td><td>过期前 5 分钟预刷新调度器</td></tr>
+    <tr><td><strong>设备信任</strong></td><td><code>trustedDevice.ts</code></td><td>ELEVATED SecurityTier + X-Trusted-Device-Token header</td></tr>
+    <tr><td><strong>崩溃恢复</strong></td><td><code>bridgePointer.ts</code></td><td>PID 文件写入 sessionId + environmentId，teardown 清除（perpetual 模式保留）</td></tr>
+    <tr><td><strong>会话 ID 兼容</strong></td><td><code>sessionIdCompat.ts</code></td><td><code>toCompatSessionId</code>（session_*）↔ <code>toInfraSessionId</code>（cse_*）双向转换</td></tr>
+    <tr><td><strong>故障注入</strong></td><td><code>bridgeDebug.ts</code></td><td>ant-only：poll/register/heartbeat 故障注入，用于内部测试</td></tr>
+  </tbody>
+</table>
+
+<div class="collapsible" onclick="toggleCollapsible(this)">🔌 v1 vs v2 传输协议对比</div>
+<div class="collapsible-body">
+<table>
+  <thead><tr><th>特性</th><th>v1 HybridTransport</th><th>v2 SSETransport + CCRClient</th></tr></thead>
+  <tbody>
+    <tr><td><strong>读通道</strong></td><td>WebSocket（全双工）</td><td>SSE EventSource（单向）</td></tr>
+    <tr><td><strong>写通道</strong></td><td>HTTP POST → Session-Ingress</td><td>HTTP POST → CCR /worker/*</td></tr>
+    <tr><td><strong>URL 构建</strong></td><td><code>buildSdkUrl</code></td><td><code>buildCCRv2SdkUrl</code></td></tr>
+    <tr><td><strong>序列号</strong></td><td>—</td><td>SSE event ID → from_sequence_num（防全量重播）</td></tr>
+    <tr><td><strong>选择依据</strong></td><td>默认</td><td><code>secret.use_code_sessions = true</code> 或环境变量覆盖</td></tr>
+    <tr><td><strong>Generation 计数器</strong></td><td>—</td><td><code>v2Generation</code> 检测过时的异步握手</td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="collapsible" onclick="toggleCollapsible(this)">💓 Poll 循环心跳策略</div>
+<div class="collapsible-body">
+<pre><code class="language-text">Poll 循环状态机（bridgeMain.ts + replBridge.ts 共用模式）：
+
+┌─── 快速轮询（无工作时）────────┐
+│  间隔：DEFAULT_POLL_CONFIG      │
+│  空轮询日志：每 100 次记一次     │
+└──────────┬─────────────────────┘
+           │ 收到 WorkResponse
+           ▼
+┌─── At-Capacity 心跳模式 ──────┐
+│  间隔：non_exclusive_heartbeat │
+│  续期：POST .../heartbeat      │
+│  响应：lease_extended + state  │
+└──────────┬─────────────────────┘
+           │ transport 断开 / 会话完成
+           ▼
+    CapacityWake 信号唤醒
+    → 立即回到快速轮询
+
+错误恢复：
+  初始延迟：2s
+  最大延迟：60s（指数退避）
+  放弃时间：15 分钟</code></pre>
+</div>
+
+<div class="tip tip-key">
+  <strong>🔑 一句话总结：</strong><code>bridge/</code> 是 Claude Code 的 <strong>远程控制通信枢纽</strong>。bridgeApi 封装 8 个 REST 端点 + OAuth 401 自动重试 + 路径注入防护；replBridge 实现 3 层重连策略（原地重连 → 新会话 → 放弃）+ BoundedUUIDSet 环形缓冲去重 + FlushGate 保序 + SSE 序列号跨传输记忆；bridgeMessaging 用纯函数实现消息路由 + 5 种控制命令处理（10-14s 超时约束）；传输层支持 v1/v2 双协议（WS/SSE）+ JWT 预刷新 + 设备信任 + crash-recovery 指针。这 31 个文件共同构建了一个高可靠的实时双向通信系统。
+</div>
+
+</section>
+
+<!-- ==================== §23 CORE SERVICES LAYER ==================== -->
+
+
+</main>
+<button class="back-top" id="backTop" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button>
+<script src="js/main.js"></script>
+</body>
+</html>

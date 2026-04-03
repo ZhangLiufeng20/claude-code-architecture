@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CLI 与传输层 — Claude Code v2.1.88 架构深度解析</title>
+<meta name="description" content="基于 Source Map 逆向还原的 Claude Code 架构核心概念与源码解析">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-jsx.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-tsx.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+<script type="module">
+import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+mermaid.initialize({startOnLoad:true,theme:"dark",themeVariables:{primaryColor:"#6d28d9",primaryTextColor:"#e2e8f0",primaryBorderColor:"#7c3aed",lineColor:"#7c3aed",secondaryColor:"#1e1b4b",tertiaryColor:"#0f172a"}});
+</script>
+<style>
+
+
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#05050a;--bg2:#0a0a16;--surface:rgba(20,20,38,.5);--surface2:rgba(35,35,65,.6);--border:rgba(255,255,255,.08);--border-hover:rgba(139,92,246,.5);--text:#f8fafc;--text2:#94a3b8;--text3:#64748b;--accent:#8b5cf6;--accent2:#6d28d9;--accent3:#c084fc;--green:#10b981;--blue:#3b82f6;--orange:#f59e0b;--red:#ef4444;--pink:#ec4899;--cyan:#06b6d4;--sidebar-w:280px;--header-h:64px}
+html{scroll-behavior:smooth;scroll-padding-top:80px}
+body{font-family:'Inter',system-ui,sans-serif;background-color:var(--bg);background-image:radial-gradient(circle at 15% 0%,rgba(139,92,246,.15) 0,transparent 30%),radial-gradient(circle at 85% 10%,rgba(6,182,212,.1) 0,transparent 30%);background-attachment:fixed;color:var(--text);line-height:1.7;overflow-x:hidden}
+::-webkit-scrollbar{width:6px}
+::-webkit-scrollbar-track{background:rgba(0,0,0,.2)}
+::-webkit-scrollbar-thumb{background:var(--surface2);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:var(--accent)}
+a{color:var(--accent3);text-decoration:none;transition:color .2s}
+a:hover{color:var(--cyan)}
+code{font-family:'JetBrains Mono',monospace}
+/* Header */
+.header{position:fixed;top:0;left:0;right:0;height:var(--header-h);background:rgba(5,5,10,.6);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 24px;z-index:100;gap:16px}
+.header .logo{font-size:22px;font-weight:900;letter-spacing:-.5px;background:linear-gradient(135deg,#c084fc,#38bdf8,#818cf8);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.header .version{font-size:12px;padding:2px 10px;border-radius:99px;background:var(--surface);color:var(--accent3);border:1px solid var(--border);font-weight:600;box-shadow:inset 0 1px 0 rgba(255,255,255,.1)}
+.header .search-box{flex:1;max-width:400px;margin-left:auto}
+.header .search-box input{width:100%;padding:10px 16px;border-radius:12px;border:1px solid var(--border);background:var(--surface);backdrop-filter:blur(10px);color:var(--text);font-size:14px;outline:none;transition:all .3s ease;box-shadow:inset 0 1px 2px rgba(0,0,0,.2)}
+.header .search-box input:focus{border-color:var(--accent);background:rgba(20,20,40,.8);box-shadow:0 0 0 4px rgba(139,92,246,.1)}
+.menu-btn{display:none;background:none;border:none;color:var(--text);font-size:24px;cursor:pointer}
+/* Sidebar */
+.sidebar{position:fixed;left:0;top:var(--header-h);bottom:0;width:var(--sidebar-w);background:rgba(10,10,22,.6);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-right:1px solid var(--border);overflow-y:auto;padding:20px 0;z-index:90;transition:transform .3s cubic-bezier(.4,0,.2,1)}
+.sidebar .nav-group{margin-bottom:12px}
+.sidebar .nav-group-title{padding:10px 20px;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:rgba(255,255,255,.3)}
+.sidebar .nav-item{display:block;padding:8px 20px 8px 28px;font-size:13px;font-weight:500;color:var(--text2);transition:all .25s ease;border-left:3px solid transparent;cursor:pointer}
+.sidebar .nav-item:hover{color:#fff;background:linear-gradient(90deg,var(--surface),transparent)}
+.sidebar .nav-item.active{color:var(--accent3);border-left-color:var(--accent);background:linear-gradient(90deg,rgba(139,92,246,.1),transparent);text-shadow:0 0 8px rgba(192,132,252,.3)}
+/* Main */
+.main{margin-left:var(--sidebar-w);margin-top:var(--header-h);padding:40px 60px 80px;max-width:1040px}
+/* Sections */
+.section{margin-bottom:80px;animation:fadeIn .6s cubic-bezier(.16,1,.3,1)}
+@keyframes fadeIn{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:translateY(0)}}
+.section-title{font-size:32px;font-weight:900;letter-spacing:-.5px;margin-bottom:32px;padding-bottom:16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;position:relative}
+.section-title::after{content:'';position:absolute;left:0;bottom:-1px;height:1px;width:100px;background:linear-gradient(90deg,var(--accent),transparent)}
+.section-title .icon{font-size:32px;filter:drop-shadow(0 0 12px rgba(139,92,246,.4))}
+.section-title .num{font-size:13px;padding:4px 12px;border-radius:99px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;font-weight:700;box-shadow:0 4px 12px rgba(109,40,217,.3)}
+h3{font-size:22px;font-weight:800;letter-spacing:-.3px;margin:36px 0 16px;background:linear-gradient(135deg,#fff,#cbd5e1);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+h4{font-size:16px;font-weight:700;margin:24px 0 10px;color:var(--accent3)}
+p{margin-bottom:16px;color:var(--text2);font-size:15px}
+ul,ol{margin:12px 0 20px 24px;color:var(--text2);font-size:15px}
+li{margin-bottom:6px}
+li::marker{color:var(--accent)}
+strong{color:#fff;font-weight:600}
+/* Cards */
+.card{background:var(--surface);backdrop-filter:blur(16px);border:1px solid var(--border);border-radius:16px;padding:24px;margin:20px 0;transition:all .4s cubic-bezier(.16,1,.3,1);box-shadow:0 4px 20px rgba(0,0,0,.2),inset 0 1px 0 rgba(255,255,255,.05)}
+.card:hover{transform:translateY(-4px);border-color:var(--border-hover);box-shadow:0 12px 40px rgba(0,0,0,.4),0 0 20px rgba(139,92,246,.15),inset 0 1px 0 rgba(255,255,255,.1)}
+.card-title{font-size:18px;font-weight:800;margin-bottom:12px;color:#fff}
+/* Stats Grid */
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin:24px 0}
+.stat-card{background:var(--surface);backdrop-filter:blur(16px);border:1px solid var(--border);border-radius:16px;padding:24px;text-align:center;transition:all .4s ease;box-shadow:inset 0 1px 0 rgba(255,255,255,.02)}
+.stat-card:hover{transform:translateY(-4px) scale(1.02);border-color:var(--border-hover);background:linear-gradient(180deg,rgba(35,35,65,.8),rgba(20,20,38,.5))}
+.stat-card .value{font-size:36px;font-weight:900;letter-spacing:-1px;background:linear-gradient(135deg,#c084fc,#38bdf8);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;filter:drop-shadow(0 2px 8px rgba(56,189,248,.3))}
+.stat-card .label{font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--text3);margin-top:8px}
+/* Table */
+table{width:100%;border-collapse:separate;border-spacing:0;margin:24px 0;font-size:14px;border-radius:12px;overflow:hidden;border:1px solid var(--border);background:var(--surface)}
+th{background:rgba(255,255,255,.03);padding:14px 18px;text-align:left;font-weight:700;color:var(--accent3);border-bottom:1px solid var(--border)}
+td{padding:14px 18px;border-bottom:1px solid var(--border);color:var(--text2)}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:rgba(255,255,255,.02)}
+/* Code blocks / Collapsible */
+pre[class*="language-"]{border-radius:12px!important;margin:16px 0!important;border:1px solid var(--border)!important;font-size:13px!important;background:#0d0d16!important;box-shadow:inset 0 2px 10px rgba(0,0,0,.4)}
+.collapsible{margin:16px 0;border-radius:12px;overflow:hidden;border:1px solid var(--border);background:var(--surface);transition:border-color .3s;box-shadow:inset 0 1px 0 rgba(255,255,255,.05)}
+.collapsible:hover{border-color:var(--border-hover)}
+.collapsible-header{display:flex;align-items:center;gap:12px;padding:14px 20px;cursor:pointer;font-size:14px;font-weight:700;color:#fff;transition:all .3s;user-select:none;background:rgba(255,255,255,.02)}
+.collapsible-header:hover{background:rgba(255,255,255,.05)}
+.collapsible-header .arrow{transition:transform .3s cubic-bezier(.4,0,.2,1);font-size:12px;color:var(--text3)}
+.collapsible-header.open .arrow{transform:rotate(90deg);color:var(--accent3)}
+.collapsible-body{display:none;border-top:1px solid var(--border);background:#0d0d16}
+.collapsible-body.show{display:block;animation:slideDown .3s ease}
+@keyframes slideDown{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:translateY(0)}}
+.collapsible-body pre{margin:0!important;border:none!important;border-radius:0!important;box-shadow:none}
+/* Tags */
+.tag{display:inline-block;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:700;letter-spacing:.5px;margin:2px 4px 2px 0;text-transform:uppercase}
+.tag-purple{background:rgba(192,132,252,.15);color:#d8b4fe;border:1px solid rgba(192,132,252,.3)}
+.tag-green{background:rgba(16,185,129,.15);color:#6ee7b7;border:1px solid rgba(16,185,129,.3)}
+.tag-blue{background:rgba(59,130,246,.15);color:#93c5fd;border:1px solid rgba(59,130,246,.3)}
+.tag-orange{background:rgba(245,158,11,.15);color:#fcd34d;border:1px solid rgba(245,158,11,.3)}
+.tag-red{background:rgba(239,68,68,.15);color:#fca5a5;border:1px solid rgba(239,68,68,.3)}
+.tag-cyan{background:rgba(6,182,212,.15);color:#67e8f9;border:1px solid rgba(6,182,212,.3)}
+.tag-pink{background:rgba(236,72,153,.15);color:#f9a8d4;border:1px solid rgba(236,72,153,.3)}
+/* Mermaid */
+.mermaid{margin:24px 0;padding:24px;background:var(--surface);backdrop-filter:blur(10px);border:1px solid var(--border);border-radius:16px;overflow-x:auto;box-shadow:inset 0 1px 0 rgba(255,255,255,.05);transition:border-color .3s}
+.mermaid:hover{border-color:rgba(139,92,246,.3)}
+/* Tips */
+.tip{padding:16px 20px;border-radius:12px;margin:20px 0;font-size:14.5px;border:1px solid var(--border);border-left:4px solid;backdrop-filter:blur(10px)}
+.tip-info{background:rgba(59,130,246,.05);border-left-color:var(--blue);border-color:rgba(59,130,246,.2)}
+.tip-warn{background:rgba(245,158,11,.05);border-left-color:var(--orange);border-color:rgba(245,158,11,.2)}
+.tip-key{background:rgba(139,92,246,.05);border-left-color:var(--accent);border-color:rgba(139,92,246,.2);box-shadow:0 4px 20px rgba(139,92,246,.05)}
+/* Back to top */
+.back-top{position:fixed;bottom:32px;right:32px;width:48px;height:48px;border-radius:50%;background:linear-gradient(135deg,var(--accent2),var(--accent));color:#fff;border:none;font-size:22px;cursor:pointer;display:none;align-items:center;justify-content:center;box-shadow:0 8px 24px rgba(109,40,217,.4),inset 0 1px 0 rgba(255,255,255,.2);transition:all .3s cubic-bezier(.16,1,.3,1);z-index:99}
+.back-top:hover{transform:translateY(-6px);box-shadow:0 12px 32px rgba(109,40,217,.6),inset 0 1px 0 rgba(255,255,255,.3)}
+.back-top.show{display:flex}
+/* Responsive */
+@media(max-width:900px){
+.sidebar{transform:translateX(-100%)}
+.sidebar.open{transform:translateX(0)}
+.main{margin-left:0;padding:24px 20px 80px}
+.menu-btn{display:block}
+:root{--sidebar-w:260px}
+.section-title{font-size:26px}
+.stats-grid{grid-template-columns:1fr}
+}
+/* File tree */
+.file-tree{font-family:'JetBrains Mono',monospace;font-size:13px;background:rgba(10,10,16,.8);border:1px solid var(--border);border-radius:12px;padding:20px;margin:16px 0;line-height:1.9;box-shadow:inset 0 2px 10px rgba(0,0,0,.3)}
+.file-tree .dir{color:var(--accent3);font-weight:600}
+.file-tree .file{color:var(--text2)}
+.file-tree .comment{color:var(--text3);font-style:italic}
+/* Flow arrow */
+.flow-step{display:flex;align-items:center;gap:16px;margin:10px 0;padding:12px 20px;background:var(--surface);border:1px solid var(--border);border-radius:12px;font-size:14.5px;transition:transform .2s;box-shadow:inset 0 1px 0 rgba(255,255,255,.02)}
+.flow-step:hover{transform:translateX(4px);border-color:var(--border-hover)}
+.flow-step .step-num{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,var(--accent2),var(--accent));color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;flex-shrink:0;box-shadow:0 2px 8px rgba(109,40,217,.3)}
+.flow-arrow{text-align:center;color:var(--accent3);font-size:20px;margin:6px 0;opacity:.7}
+/* Inline code */
+:not(pre)>code{background:rgba(255,255,255,.05);padding:3px 8px;border-radius:6px;font-size:13px;color:#c084fc;border:1px solid rgba(255,255,255,.05)}
+
+
+</style>
+</head>
+<body>
+<header class="header">
+  <button class="menu-btn" onclick="document.querySelector('.sidebar').classList.toggle('open')">&#9776;</button>
+  <div class="logo"><a href="index.html">Claude Code 架构解析</a></div>
+  <span class="version">v2.1.88</span>
+  <div class="search-box"><input type="text" id="searchInput" placeholder="&#x1F50D; 搜索章节内容..." oninput="handleSearch(this.value)"></div>
+</header>
+<nav class="sidebar" id="sidebar">
+
+  <div class="nav-group">
+    <div class="nav-group-title">概览</div>
+    <a class="nav-item" href="index.html#overview">📋 项目概览</a>
+    <a class="nav-item" href="index.html#structure">📁 目录结构</a>
+    <a class="nav-item" href="index.html#arch">🏗️ 架构分层</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">核心引擎</div>
+    <a class="nav-item" href="core-engine.html#startup">🚀 启动流程</a>
+    <a class="nav-item" href="core-engine.html#tool-system">🔧 Tool 系统</a>
+    <a class="nav-item" href="core-engine.html#bash-security">🛡️ 安全沙箱</a>
+    <a class="nav-item" href="core-engine.html#query-loop">🔄 Query Loop</a>
+    <a class="nav-item" href="core-engine.html#query-engine">⚙️ QueryEngine</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">入口与引导</div>
+    <a class="nav-item" href="entrypoints.html#entrypoints">🚪 入口引导层</a>
+    <a class="nav-item" href="entrypoints.html#cli-bootstrap" style="padding-left:40px;font-size:12px;opacity:.7">↳ CLI Fast-Path</a>
+    <a class="nav-item" href="entrypoints.html#init-chain" style="padding-left:40px;font-size:12px;opacity:.7">↳ 初始化管线</a>
+    <a class="nav-item" href="entrypoints.html#mcp-server" style="padding-left:40px;font-size:12px;opacity:.7">↳ MCP Server</a>
+    <a class="nav-item" href="entrypoints.html#agent-sdk" style="padding-left:40px;font-size:12px;opacity:.7">↳ Agent SDK</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">子系统</div>
+    <a class="nav-item" href="subsystems.html#commands">💬 命令系统</a>
+    <a class="nav-item" href="subsystems.html#permissions">🔐 权限系统</a>
+    <a class="nav-item" href="subsystems.html#state">📦 状态管理</a>
+    <a class="nav-item" href="subsystems.html#api">🌐 API 通信</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">高级特性</div>
+    <a class="nav-item" href="advanced.html#coordinator">🤖 多Agent协调</a>
+    <a class="nav-item" href="advanced.html#mcp">🔌 MCP 集成</a>
+    <a class="nav-item" href="advanced.html#tasks">⚙️ 后台任务</a>
+    <a class="nav-item" href="advanced.html#plugins">📦 插件与技能</a>
+    <a class="nav-item" href="advanced.html#feature-flags">🚩 Feature Flags</a>
+    <a class="nav-item" href="context.html#context">🧠 上下文管理</a>
+    <a class="nav-item" href="context.html#ctx-search" style="padding-left:40px;font-size:12px;opacity:.7">↳ Grep vs RAG</a>
+    <a class="nav-item" href="context.html#ctx-memory" style="padding-left:40px;font-size:12px;opacity:.7">↳ 6层记忆体系</a>
+    <a class="nav-item" href="context.html#ctx-recall" style="padding-left:40px;font-size:12px;opacity:.7">↳ LLM 记忆召回</a>
+    <a class="nav-item" href="context.html#ctx-sysprompt" style="padding-left:40px;font-size:12px;opacity:.7">↳ System Prompt</a>
+    <a class="nav-item" href="context.html#ctx-decisions" style="padding-left:40px;font-size:12px;opacity:.7">↳ 设计决策表</a>
+    <a class="nav-item" href="ui-components.html#ui">🎨 UI 渲染</a>
+    <a class="nav-item" href="ui-components.html#ui-compiler" style="padding-left:40px;font-size:12px;opacity:.7">↳ React Compiler</a>
+    <a class="nav-item" href="ui-components.html#ui-messages" style="padding-left:40px;font-size:12px;opacity:.7">↳ 消息管线</a>
+    <a class="nav-item" href="ui-components.html#ui-virtual" style="padding-left:40px;font-size:12px;opacity:.7">↳ 虚拟滚动</a>
+    <a class="nav-item" href="ui-components.html#ui-fullscreen" style="padding-left:40px;font-size:12px;opacity:.7">↳ 全屏布局</a>
+    <a class="nav-item" href="ui-components.html#ui-perf" style="padding-left:40px;font-size:12px;opacity:.7">↳ 性能工程</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">基础设施</div>
+    <a class="nav-item" href="utils-infra.html#infra">🔩 基础设施</a>
+    <a class="nav-item" href="utils-infra.html#infra-session" style="padding-left:40px;font-size:12px;opacity:.7">↳ 会话持久化</a>
+    <a class="nav-item" href="utils-infra.html#infra-messages" style="padding-left:40px;font-size:12px;opacity:.7">↳ 消息系统</a>
+    <a class="nav-item" href="utils-infra.html#infra-hooks" style="padding-left:40px;font-size:12px;opacity:.7">↳ Hook 引擎</a>
+    <a class="nav-item" href="utils-infra.html#infra-config" style="padding-left:40px;font-size:12px;opacity:.7">↳ 配置与认证</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">React Hooks</div>
+    <a class="nav-item" href="hooks-system.html#hooks">🪝 React Hooks</a>
+    <a class="nav-item" href="hooks-system.html#hooks-input" style="padding-left:40px;font-size:12px;opacity:.7">↳ 输入管线</a>
+    <a class="nav-item" href="hooks-system.html#hooks-virtual" style="padding-left:40px;font-size:12px;opacity:.7">↳ 虚拟滚动</a>
+    <a class="nav-item" href="hooks-system.html#hooks-voice" style="padding-left:40px;font-size:12px;opacity:.7">↳ 语音子系统</a>
+    <a class="nav-item" href="hooks-system.html#hooks-collab" style="padding-left:40px;font-size:12px;opacity:.7">↳ 协作通信</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">渲染引擎</div>
+    <a class="nav-item" href="ink-engine.html#ink">🖼️ Ink 渲染引擎</a>
+    <a class="nav-item" href="ink-engine.html#ink-dom" style="padding-left:40px;font-size:12px;opacity:.7">↳ 自定义 DOM</a>
+    <a class="nav-item" href="ink-engine.html#ink-pipeline" style="padding-left:40px;font-size:12px;opacity:.7">↳ 渲染管线</a>
+    <a class="nav-item" href="ink-engine.html#ink-screen" style="padding-left:40px;font-size:12px;opacity:.7">↳ 屏幕缓冲区</a>
+    <a class="nav-item" href="ink-engine.html#ink-interact" style="padding-left:40px;font-size:12px;opacity:.7">↳ 全屏交互</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">插件系统</div>
+    <a class="nav-item" href="advanced.html#plugins">🔌 插件系统</a>
+    <a class="nav-item" href="advanced.html#plugins-loader" style="padding-left:40px;font-size:12px;opacity:.7">↳ 发现与加载</a>
+    <a class="nav-item" href="advanced.html#plugins-marketplace" style="padding-left:40px;font-size:12px;opacity:.7">↳ Marketplace</a>
+    <a class="nav-item" href="advanced.html#plugins-schema" style="padding-left:40px;font-size:12px;opacity:.7">↳ Schema 安全</a>
+    <a class="nav-item" href="advanced.html#plugins-lifecycle" style="padding-left:40px;font-size:12px;opacity:.7">↳ 验证生命周期</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">Bridge 通信</div>
+    <a class="nav-item" href="bridge.html#bridge">🌉 Bridge 通信</a>
+    <a class="nav-item" href="bridge.html#bridge-api" style="padding-left:40px;font-size:12px;opacity:.7">↳ 环境与轮询</a>
+    <a class="nav-item" href="bridge.html#bridge-repl" style="padding-left:40px;font-size:12px;opacity:.7">↳ REPL Bridge</a>
+    <a class="nav-item" href="bridge.html#bridge-messaging" style="padding-left:40px;font-size:12px;opacity:.7">↳ 消息路由</a>
+    <a class="nav-item" href="bridge.html#bridge-transport" style="padding-left:40px;font-size:12px;opacity:.7">↳ 传输与安全</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">核心服务层</div>
+    <a class="nav-item" href="services-deep.html#services">🔗 核心服务层</a>
+    <a class="nav-item" href="services-deep.html#svc-api" style="padding-left:40px;font-size:12px;opacity:.7">↳ API 通信核心</a>
+    <a class="nav-item" href="services-deep.html#svc-retry" style="padding-left:40px;font-size:12px;opacity:.7">↳ 重试引擎</a>
+    <a class="nav-item" href="services-deep.html#svc-errors" style="padding-left:40px;font-size:12px;opacity:.7">↳ 错误分类</a>
+    <a class="nav-item" href="services-deep.html#svc-mcp" style="padding-left:40px;font-size:12px;opacity:.7">↳ MCP 客户端</a>
+    <a class="nav-item" href="services-deep.html#svc-compact" style="padding-left:40px;font-size:12px;opacity:.7">↳ 上下文压缩</a>
+    <a class="nav-item" href="services-deep.html#svc-cache" style="padding-left:40px;font-size:12px;opacity:.7">↳ 缓存检测</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">工具系统</div>
+    <a class="nav-item" href="tools-deep.html#tools-system">🛠️ 工具系统</a>
+    <a class="nav-item" href="tools-deep.html#tools-bash" style="padding-left:40px;font-size:12px;opacity:.7">↳ BashTool 深剖</a>
+    <a class="nav-item" href="tools-deep.html#tools-panorama" style="padding-left:40px;font-size:12px;opacity:.7">↳ 38 工具全景</a>
+    <a class="nav-item" href="tools-deep.html#tools-client" style="padding-left:40px;font-size:12px;opacity:.7">↳ 多云客户端</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">权限与安全</div>
+    <a class="nav-item" href="tools-deep.html#perm-engine">🛡️ 权限决策引擎</a>
+    <a class="nav-item" href="tools-deep.html#perm-pipeline" style="padding-left:40px;font-size:12px;opacity:.7">↳ 决策管线</a>
+    <a class="nav-item" href="tools-deep.html#perm-yolo" style="padding-left:40px;font-size:12px;opacity:.7">↳ Auto Mode 分类器</a>
+    <a class="nav-item" href="tools-deep.html#perm-modes" style="padding-left:40px;font-size:12px;opacity:.7">↳ 权限模式</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">常量与命令</div>
+    <a class="nav-item" href="config-cmd.html#config-cmd">📜 常量与命令</a>
+    <a class="nav-item" href="config-cmd.html#config-constants" style="padding-left:40px;font-size:12px;opacity:.7">↳ 常量系统</a>
+    <a class="nav-item" href="config-cmd.html#config-commands" style="padding-left:40px;font-size:12px;opacity:.7">↳ 命令系统</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">Agent 与状态</div>
+    <a class="nav-item" href="agent-coord.html#agent-coord">🤖 Agent 协调层</a>
+    <a class="nav-item" href="agent-coord.html#agent-lifecycle" style="padding-left:40px;font-size:12px;opacity:.7">↳ 生命周期</a>
+    <a class="nav-item" href="agent-coord.html#agent-modes" style="padding-left:40px;font-size:12px;opacity:.7">↳ 多智能体模式</a>
+    <a class="nav-item" href="subsystems.html#state-ctx">📊 状态与上下文</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">CLI 与运行时</div>
+    <a class="nav-item" href="cli-transport.html#cli-transport">🖥️ CLI 与传输层</a>
+    <a class="nav-item" href="analytics-ff.html#analytics-ff">📈 分析与特性开关</a>
+    <a class="nav-item" href="model-shell.html#model-shell">🔧 模型与 Shell</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">类型与任务</div>
+    <a class="nav-item" href="types-tasks.html#type-system">📝 类型系统</a>
+    <a class="nav-item" href="types-tasks.html#task-migration">⚙️ 任务与迁移</a>
+  </div>
+
+</nav>
+<main class="main" id="mainContent">
+
+<section class="section" id="cli-transport">
+<h2 class="section-title"><span class="icon">🖥️</span> CLI 与传输层 <span class="num">29</span></h2>
+
+<div class="tip tip-method">
+  <strong>🔬 方法论：</strong>本章对 <code>cli/</code>（8 文件 + 2 子目录 / 280KB+）进行源码级分析。
+  核心入口：<code>print.ts</code>（213KB/5595 行）— headless 模式全部逻辑在此单文件。
+</div>
+
+<p><code>cli/</code> 是 Claude Code SDK 模式和 <code>--print</code> 非交互模式的入口。<code>print.ts</code> 实现了完整的 headless 运行时——
+  包括消息队列、工具调用权限代理、MCP 管理、会话恢复、sandbox 沙箱、GrowthBook 初始化等。</p>
+
+<div class="stats-grid">
+  <div class="stat-card"><div class="value">8+7</div><div class="label">文件 + 子目录文件</div></div>
+  <div class="stat-card"><div class="value">213KB</div><div class="label">print.ts 单文件</div></div>
+  <div class="stat-card"><div class="value">5595</div><div class="label">print.ts 行数</div></div>
+  <div class="stat-card"><div class="value">7</div><div class="label">传输层实现</div></div>
+</div>
+
+<h3>29.1 顶层文件</h3>
+<table>
+  <thead><tr><th>文件</th><th>体积</th><th>职责</th></tr></thead>
+  <tbody>
+    <tr><td><strong>print.ts</strong></td><td>213KB</td><td>runHeadless() — headless 主循环、消息队列、SDK 协议、MCP 管理</td></tr>
+    <tr><td><strong>structuredIO.ts</strong></td><td>29KB</td><td>StructuredIO — NDJSON 格式化输入输出、SDK 控制协议</td></tr>
+    <tr><td><strong>update.ts</strong></td><td>14KB</td><td>版本检查与自动更新</td></tr>
+    <tr><td><strong>remoteIO.ts</strong></td><td>10KB</td><td>RemoteIO — 远程会话 I/O</td></tr>
+    <tr><td><strong>exit.ts</strong></td><td>1.3KB</td><td>退出处理 + 资源清理</td></tr>
+  </tbody>
+</table>
+
+<h3>29.2 传输层 (transports/)</h3>
+<table>
+  <thead><tr><th>传输</th><th>体积</th><th>协议</th><th>用途</th></tr></thead>
+  <tbody>
+    <tr><td><strong>ccrClient.ts</strong></td><td>34KB</td><td>CCR 协议</td><td>远程环境通信</td></tr>
+    <tr><td><strong>WebSocketTransport.ts</strong></td><td>28KB</td><td>WebSocket</td><td>双向实时通信</td></tr>
+    <tr><td><strong>SSETransport.ts</strong></td><td>24KB</td><td>SSE + POST</td><td>单向推送 + 命令</td></tr>
+    <tr><td><strong>HybridTransport.ts</strong></td><td>11KB</td><td>WS 降级 SSE</td><td>自适应传输选择</td></tr>
+    <tr><td><strong>SerialBatchEventUploader.ts</strong></td><td>9KB</td><td>HTTP Batch</td><td>串行批量事件上传</td></tr>
+    <tr><td><strong>WorkerStateUploader.ts</strong></td><td>4KB</td><td>HTTP</td><td>Worker 状态同步</td></tr>
+  </tbody>
+</table>
+
+<h3>29.3 处理器 (handlers/)</h3>
+<table>
+  <thead><tr><th>Handler</th><th>体积</th><th>职责</th></tr></thead>
+  <tbody>
+    <tr><td><strong>mcp.tsx</strong></td><td>56KB</td><td>MCP 服务器交互式管理 UI（连接/断连/OAuth）</td></tr>
+    <tr><td><strong>plugins.ts</strong></td><td>31KB</td><td>插件安装/卸载/更新</td></tr>
+    <tr><td><strong>util.tsx</strong></td><td>15KB</td><td>通用 handler 工具函数</td></tr>
+    <tr><td><strong>auth.ts</strong></td><td>11KB</td><td>OAuth 令牌安装与刷新</td></tr>
+    <tr><td><strong>autoMode.ts</strong></td><td>6KB</td><td>Auto Mode 切换逻辑</td></tr>
+    <tr><td><strong>agents.ts</strong></td><td>2KB</td><td>Agent 定义加载</td></tr>
+  </tbody>
+</table>
+
+<div class="tip tip-key">
+  <strong>🔑 一句话总结：</strong><code>cli/</code> 是 Claude Code 的 <strong>SDK/非交互运行时</strong>。<code>print.ts</code>（213KB/5595行）单文件包含 headless 全部逻辑——消息队列、权限代理、MCP、sandbox、GrowthBook 初始化；<code>transports/</code> 提供 6 种传输实现（WS/SSE/Hybrid/CCR/Batch/Worker），<code>handlers/</code> 封装 MCP管理UI(56KB)、插件管理(31KB)、OAuth(11KB) 等交互逻辑。
+</div>
+
+</section>
+
+<section class="section" id="cli-print">
+<h2 class="section-title"><span class="icon">🖨️</span> print.ts — Headless 运行时引擎（5594行） <span class="num">39</span></h2>
+
+<p><code>cli/print.ts</code> 是 <code>-p</code> / <code>--print</code> 模式的 <strong>完整运行时</strong>——
+  它不使用 React Ink，而是直接驱动 <code>query()</code> 循环并通过 NDJSON 或纯文本输出结果。</p>
+
+<h3 id="cli-print-arch">39.1 Headless 架构</h3>
+<table>
+  <thead><tr><th>组件</th><th>职责</th></tr></thead>
+  <tbody>
+    <tr><td><strong>runHeadless()</strong></td><td>主入口。初始化沙箱、恢复会话、启动消息循环</td></tr>
+    <tr><td><strong>StructuredIO</strong></td><td>NDJSON 格式的标准输出——每行一个 JSON 消息</td></tr>
+    <tr><td><strong>RemoteIO</strong></td><td>远程会话 I/O（CCR 协议桥接）</td></tr>
+    <tr><td><strong>消息队列</strong></td><td>QueuedCommand 队列 + UUID 去重（10,000 上限 LRU）</td></tr>
+    <tr><td><strong>Idle Timeout</strong></td><td>空闲超时自动退出（防止孤儿进程）</td></tr>
+  </tbody>
+</table>
+
+<h3 id="cli-print-uuid">39.2 UUID 去重机制</h3>
+<p>每条入站消息都有 UUID，<code>trackReceivedMessageUuid()</code> 维护一个
+  <strong>10,000 条的 LRU 缓存</strong>——超出时驱逐最旧的 UUID，
+  防止断线重连时重复处理已完成的消息。</p>
+
+<h3 id="cli-print-cron">39.3 Cron 定时触发</h3>
+<p>当 <code>feature('AGENT_TRIGGERS')</code> 启用时，print.ts 内建了
+  <strong>cron 调度器</strong>：按 cron 表达式定时向消息队列注入
+  <code>&lt;tick&gt;</code> 标签消息，驱动 Kairos 自主执行任务。</p>
+
+<h3 id="cli-print-team">39.4 Team 关闭协议</h3>
+<p>当 headless 会话中存在 Teammate（多 Agent 协作），退出前必须执行
+  <code>SHUTDOWN_TEAM_PROMPT</code>——要求主 Agent 先关闭所有 Teammate，
+  等待 <code>isShutdownApproved()</code> 确认后才真正退出，防止工作丢失。</p>
+
+<div class="tip tip-key">
+  <strong>🔑 设计洞察：</strong>print.ts 是 Claude Code 的「无头 REPL」——
+  它复制了 REPL.tsx 的全部核心逻辑（权限代理、MCP 管理、会话恢复），
+  但去掉了所有 React UI 渲染，改用 NDJSON 协议。
+  这使得 SDK 客户端（TypeScript/Python）可以通过子进程 stdio 与 Claude Code 交互。
+</div>
+</section>
+
+<!-- ==================== §30 ANALYTICS & FF ==================== -->
+
+</main>
+<button class="back-top" id="backTop" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button>
+<script src="js/main.js"></script>
+</body>
+</html>

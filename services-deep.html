@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>核心服务层 — Claude Code v2.1.88 架构深度解析</title>
+<meta name="description" content="基于 Source Map 逆向还原的 Claude Code 架构核心概念与源码解析">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-jsx.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-tsx.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+<script type="module">
+import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+mermaid.initialize({startOnLoad:true,theme:"dark",themeVariables:{primaryColor:"#6d28d9",primaryTextColor:"#e2e8f0",primaryBorderColor:"#7c3aed",lineColor:"#7c3aed",secondaryColor:"#1e1b4b",tertiaryColor:"#0f172a"}});
+</script>
+<style>
+
+
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#05050a;--bg2:#0a0a16;--surface:rgba(20,20,38,.5);--surface2:rgba(35,35,65,.6);--border:rgba(255,255,255,.08);--border-hover:rgba(139,92,246,.5);--text:#f8fafc;--text2:#94a3b8;--text3:#64748b;--accent:#8b5cf6;--accent2:#6d28d9;--accent3:#c084fc;--green:#10b981;--blue:#3b82f6;--orange:#f59e0b;--red:#ef4444;--pink:#ec4899;--cyan:#06b6d4;--sidebar-w:280px;--header-h:64px}
+html{scroll-behavior:smooth;scroll-padding-top:80px}
+body{font-family:'Inter',system-ui,sans-serif;background-color:var(--bg);background-image:radial-gradient(circle at 15% 0%,rgba(139,92,246,.15) 0,transparent 30%),radial-gradient(circle at 85% 10%,rgba(6,182,212,.1) 0,transparent 30%);background-attachment:fixed;color:var(--text);line-height:1.7;overflow-x:hidden}
+::-webkit-scrollbar{width:6px}
+::-webkit-scrollbar-track{background:rgba(0,0,0,.2)}
+::-webkit-scrollbar-thumb{background:var(--surface2);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:var(--accent)}
+a{color:var(--accent3);text-decoration:none;transition:color .2s}
+a:hover{color:var(--cyan)}
+code{font-family:'JetBrains Mono',monospace}
+/* Header */
+.header{position:fixed;top:0;left:0;right:0;height:var(--header-h);background:rgba(5,5,10,.6);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 24px;z-index:100;gap:16px}
+.header .logo{font-size:22px;font-weight:900;letter-spacing:-.5px;background:linear-gradient(135deg,#c084fc,#38bdf8,#818cf8);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.header .version{font-size:12px;padding:2px 10px;border-radius:99px;background:var(--surface);color:var(--accent3);border:1px solid var(--border);font-weight:600;box-shadow:inset 0 1px 0 rgba(255,255,255,.1)}
+.header .search-box{flex:1;max-width:400px;margin-left:auto}
+.header .search-box input{width:100%;padding:10px 16px;border-radius:12px;border:1px solid var(--border);background:var(--surface);backdrop-filter:blur(10px);color:var(--text);font-size:14px;outline:none;transition:all .3s ease;box-shadow:inset 0 1px 2px rgba(0,0,0,.2)}
+.header .search-box input:focus{border-color:var(--accent);background:rgba(20,20,40,.8);box-shadow:0 0 0 4px rgba(139,92,246,.1)}
+.menu-btn{display:none;background:none;border:none;color:var(--text);font-size:24px;cursor:pointer}
+/* Sidebar */
+.sidebar{position:fixed;left:0;top:var(--header-h);bottom:0;width:var(--sidebar-w);background:rgba(10,10,22,.6);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-right:1px solid var(--border);overflow-y:auto;padding:20px 0;z-index:90;transition:transform .3s cubic-bezier(.4,0,.2,1)}
+.sidebar .nav-group{margin-bottom:12px}
+.sidebar .nav-group-title{padding:10px 20px;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:rgba(255,255,255,.3)}
+.sidebar .nav-item{display:block;padding:8px 20px 8px 28px;font-size:13px;font-weight:500;color:var(--text2);transition:all .25s ease;border-left:3px solid transparent;cursor:pointer}
+.sidebar .nav-item:hover{color:#fff;background:linear-gradient(90deg,var(--surface),transparent)}
+.sidebar .nav-item.active{color:var(--accent3);border-left-color:var(--accent);background:linear-gradient(90deg,rgba(139,92,246,.1),transparent);text-shadow:0 0 8px rgba(192,132,252,.3)}
+/* Main */
+.main{margin-left:var(--sidebar-w);margin-top:var(--header-h);padding:40px 60px 80px;max-width:1040px}
+/* Sections */
+.section{margin-bottom:80px;animation:fadeIn .6s cubic-bezier(.16,1,.3,1)}
+@keyframes fadeIn{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:translateY(0)}}
+.section-title{font-size:32px;font-weight:900;letter-spacing:-.5px;margin-bottom:32px;padding-bottom:16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;position:relative}
+.section-title::after{content:'';position:absolute;left:0;bottom:-1px;height:1px;width:100px;background:linear-gradient(90deg,var(--accent),transparent)}
+.section-title .icon{font-size:32px;filter:drop-shadow(0 0 12px rgba(139,92,246,.4))}
+.section-title .num{font-size:13px;padding:4px 12px;border-radius:99px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;font-weight:700;box-shadow:0 4px 12px rgba(109,40,217,.3)}
+h3{font-size:22px;font-weight:800;letter-spacing:-.3px;margin:36px 0 16px;background:linear-gradient(135deg,#fff,#cbd5e1);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+h4{font-size:16px;font-weight:700;margin:24px 0 10px;color:var(--accent3)}
+p{margin-bottom:16px;color:var(--text2);font-size:15px}
+ul,ol{margin:12px 0 20px 24px;color:var(--text2);font-size:15px}
+li{margin-bottom:6px}
+li::marker{color:var(--accent)}
+strong{color:#fff;font-weight:600}
+/* Cards */
+.card{background:var(--surface);backdrop-filter:blur(16px);border:1px solid var(--border);border-radius:16px;padding:24px;margin:20px 0;transition:all .4s cubic-bezier(.16,1,.3,1);box-shadow:0 4px 20px rgba(0,0,0,.2),inset 0 1px 0 rgba(255,255,255,.05)}
+.card:hover{transform:translateY(-4px);border-color:var(--border-hover);box-shadow:0 12px 40px rgba(0,0,0,.4),0 0 20px rgba(139,92,246,.15),inset 0 1px 0 rgba(255,255,255,.1)}
+.card-title{font-size:18px;font-weight:800;margin-bottom:12px;color:#fff}
+/* Stats Grid */
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin:24px 0}
+.stat-card{background:var(--surface);backdrop-filter:blur(16px);border:1px solid var(--border);border-radius:16px;padding:24px;text-align:center;transition:all .4s ease;box-shadow:inset 0 1px 0 rgba(255,255,255,.02)}
+.stat-card:hover{transform:translateY(-4px) scale(1.02);border-color:var(--border-hover);background:linear-gradient(180deg,rgba(35,35,65,.8),rgba(20,20,38,.5))}
+.stat-card .value{font-size:36px;font-weight:900;letter-spacing:-1px;background:linear-gradient(135deg,#c084fc,#38bdf8);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;filter:drop-shadow(0 2px 8px rgba(56,189,248,.3))}
+.stat-card .label{font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--text3);margin-top:8px}
+/* Table */
+table{width:100%;border-collapse:separate;border-spacing:0;margin:24px 0;font-size:14px;border-radius:12px;overflow:hidden;border:1px solid var(--border);background:var(--surface)}
+th{background:rgba(255,255,255,.03);padding:14px 18px;text-align:left;font-weight:700;color:var(--accent3);border-bottom:1px solid var(--border)}
+td{padding:14px 18px;border-bottom:1px solid var(--border);color:var(--text2)}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:rgba(255,255,255,.02)}
+/* Code blocks / Collapsible */
+pre[class*="language-"]{border-radius:12px!important;margin:16px 0!important;border:1px solid var(--border)!important;font-size:13px!important;background:#0d0d16!important;box-shadow:inset 0 2px 10px rgba(0,0,0,.4)}
+.collapsible{margin:16px 0;border-radius:12px;overflow:hidden;border:1px solid var(--border);background:var(--surface);transition:border-color .3s;box-shadow:inset 0 1px 0 rgba(255,255,255,.05)}
+.collapsible:hover{border-color:var(--border-hover)}
+.collapsible-header{display:flex;align-items:center;gap:12px;padding:14px 20px;cursor:pointer;font-size:14px;font-weight:700;color:#fff;transition:all .3s;user-select:none;background:rgba(255,255,255,.02)}
+.collapsible-header:hover{background:rgba(255,255,255,.05)}
+.collapsible-header .arrow{transition:transform .3s cubic-bezier(.4,0,.2,1);font-size:12px;color:var(--text3)}
+.collapsible-header.open .arrow{transform:rotate(90deg);color:var(--accent3)}
+.collapsible-body{display:none;border-top:1px solid var(--border);background:#0d0d16}
+.collapsible-body.show{display:block;animation:slideDown .3s ease}
+@keyframes slideDown{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:translateY(0)}}
+.collapsible-body pre{margin:0!important;border:none!important;border-radius:0!important;box-shadow:none}
+/* Tags */
+.tag{display:inline-block;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:700;letter-spacing:.5px;margin:2px 4px 2px 0;text-transform:uppercase}
+.tag-purple{background:rgba(192,132,252,.15);color:#d8b4fe;border:1px solid rgba(192,132,252,.3)}
+.tag-green{background:rgba(16,185,129,.15);color:#6ee7b7;border:1px solid rgba(16,185,129,.3)}
+.tag-blue{background:rgba(59,130,246,.15);color:#93c5fd;border:1px solid rgba(59,130,246,.3)}
+.tag-orange{background:rgba(245,158,11,.15);color:#fcd34d;border:1px solid rgba(245,158,11,.3)}
+.tag-red{background:rgba(239,68,68,.15);color:#fca5a5;border:1px solid rgba(239,68,68,.3)}
+.tag-cyan{background:rgba(6,182,212,.15);color:#67e8f9;border:1px solid rgba(6,182,212,.3)}
+.tag-pink{background:rgba(236,72,153,.15);color:#f9a8d4;border:1px solid rgba(236,72,153,.3)}
+/* Mermaid */
+.mermaid{margin:24px 0;padding:24px;background:var(--surface);backdrop-filter:blur(10px);border:1px solid var(--border);border-radius:16px;overflow-x:auto;box-shadow:inset 0 1px 0 rgba(255,255,255,.05);transition:border-color .3s}
+.mermaid:hover{border-color:rgba(139,92,246,.3)}
+/* Tips */
+.tip{padding:16px 20px;border-radius:12px;margin:20px 0;font-size:14.5px;border:1px solid var(--border);border-left:4px solid;backdrop-filter:blur(10px)}
+.tip-info{background:rgba(59,130,246,.05);border-left-color:var(--blue);border-color:rgba(59,130,246,.2)}
+.tip-warn{background:rgba(245,158,11,.05);border-left-color:var(--orange);border-color:rgba(245,158,11,.2)}
+.tip-key{background:rgba(139,92,246,.05);border-left-color:var(--accent);border-color:rgba(139,92,246,.2);box-shadow:0 4px 20px rgba(139,92,246,.05)}
+/* Back to top */
+.back-top{position:fixed;bottom:32px;right:32px;width:48px;height:48px;border-radius:50%;background:linear-gradient(135deg,var(--accent2),var(--accent));color:#fff;border:none;font-size:22px;cursor:pointer;display:none;align-items:center;justify-content:center;box-shadow:0 8px 24px rgba(109,40,217,.4),inset 0 1px 0 rgba(255,255,255,.2);transition:all .3s cubic-bezier(.16,1,.3,1);z-index:99}
+.back-top:hover{transform:translateY(-6px);box-shadow:0 12px 32px rgba(109,40,217,.6),inset 0 1px 0 rgba(255,255,255,.3)}
+.back-top.show{display:flex}
+/* Responsive */
+@media(max-width:900px){
+.sidebar{transform:translateX(-100%)}
+.sidebar.open{transform:translateX(0)}
+.main{margin-left:0;padding:24px 20px 80px}
+.menu-btn{display:block}
+:root{--sidebar-w:260px}
+.section-title{font-size:26px}
+.stats-grid{grid-template-columns:1fr}
+}
+/* File tree */
+.file-tree{font-family:'JetBrains Mono',monospace;font-size:13px;background:rgba(10,10,16,.8);border:1px solid var(--border);border-radius:12px;padding:20px;margin:16px 0;line-height:1.9;box-shadow:inset 0 2px 10px rgba(0,0,0,.3)}
+.file-tree .dir{color:var(--accent3);font-weight:600}
+.file-tree .file{color:var(--text2)}
+.file-tree .comment{color:var(--text3);font-style:italic}
+/* Flow arrow */
+.flow-step{display:flex;align-items:center;gap:16px;margin:10px 0;padding:12px 20px;background:var(--surface);border:1px solid var(--border);border-radius:12px;font-size:14.5px;transition:transform .2s;box-shadow:inset 0 1px 0 rgba(255,255,255,.02)}
+.flow-step:hover{transform:translateX(4px);border-color:var(--border-hover)}
+.flow-step .step-num{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,var(--accent2),var(--accent));color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;flex-shrink:0;box-shadow:0 2px 8px rgba(109,40,217,.3)}
+.flow-arrow{text-align:center;color:var(--accent3);font-size:20px;margin:6px 0;opacity:.7}
+/* Inline code */
+:not(pre)>code{background:rgba(255,255,255,.05);padding:3px 8px;border-radius:6px;font-size:13px;color:#c084fc;border:1px solid rgba(255,255,255,.05)}
+
+
+</style>
+</head>
+<body>
+<header class="header">
+  <button class="menu-btn" onclick="document.querySelector('.sidebar').classList.toggle('open')">&#9776;</button>
+  <div class="logo"><a href="index.html">Claude Code 架构解析</a></div>
+  <span class="version">v2.1.88</span>
+  <div class="search-box"><input type="text" id="searchInput" placeholder="&#x1F50D; 搜索章节内容..." oninput="handleSearch(this.value)"></div>
+</header>
+<nav class="sidebar" id="sidebar">
+
+  <div class="nav-group">
+    <div class="nav-group-title">概览</div>
+    <a class="nav-item" href="index.html#overview">📋 项目概览</a>
+    <a class="nav-item" href="index.html#structure">📁 目录结构</a>
+    <a class="nav-item" href="index.html#arch">🏗️ 架构分层</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">核心引擎</div>
+    <a class="nav-item" href="core-engine.html#startup">🚀 启动流程</a>
+    <a class="nav-item" href="core-engine.html#tool-system">🔧 Tool 系统</a>
+    <a class="nav-item" href="core-engine.html#bash-security">🛡️ 安全沙箱</a>
+    <a class="nav-item" href="core-engine.html#query-loop">🔄 Query Loop</a>
+    <a class="nav-item" href="core-engine.html#query-engine">⚙️ QueryEngine</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">入口与引导</div>
+    <a class="nav-item" href="entrypoints.html#entrypoints">🚪 入口引导层</a>
+    <a class="nav-item" href="entrypoints.html#cli-bootstrap" style="padding-left:40px;font-size:12px;opacity:.7">↳ CLI Fast-Path</a>
+    <a class="nav-item" href="entrypoints.html#init-chain" style="padding-left:40px;font-size:12px;opacity:.7">↳ 初始化管线</a>
+    <a class="nav-item" href="entrypoints.html#mcp-server" style="padding-left:40px;font-size:12px;opacity:.7">↳ MCP Server</a>
+    <a class="nav-item" href="entrypoints.html#agent-sdk" style="padding-left:40px;font-size:12px;opacity:.7">↳ Agent SDK</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">子系统</div>
+    <a class="nav-item" href="subsystems.html#commands">💬 命令系统</a>
+    <a class="nav-item" href="subsystems.html#permissions">🔐 权限系统</a>
+    <a class="nav-item" href="subsystems.html#state">📦 状态管理</a>
+    <a class="nav-item" href="subsystems.html#api">🌐 API 通信</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">高级特性</div>
+    <a class="nav-item" href="advanced.html#coordinator">🤖 多Agent协调</a>
+    <a class="nav-item" href="advanced.html#mcp">🔌 MCP 集成</a>
+    <a class="nav-item" href="advanced.html#tasks">⚙️ 后台任务</a>
+    <a class="nav-item" href="advanced.html#plugins">📦 插件与技能</a>
+    <a class="nav-item" href="advanced.html#feature-flags">🚩 Feature Flags</a>
+    <a class="nav-item" href="context.html#context">🧠 上下文管理</a>
+    <a class="nav-item" href="context.html#ctx-search" style="padding-left:40px;font-size:12px;opacity:.7">↳ Grep vs RAG</a>
+    <a class="nav-item" href="context.html#ctx-memory" style="padding-left:40px;font-size:12px;opacity:.7">↳ 6层记忆体系</a>
+    <a class="nav-item" href="context.html#ctx-recall" style="padding-left:40px;font-size:12px;opacity:.7">↳ LLM 记忆召回</a>
+    <a class="nav-item" href="context.html#ctx-sysprompt" style="padding-left:40px;font-size:12px;opacity:.7">↳ System Prompt</a>
+    <a class="nav-item" href="context.html#ctx-decisions" style="padding-left:40px;font-size:12px;opacity:.7">↳ 设计决策表</a>
+    <a class="nav-item" href="ui-components.html#ui">🎨 UI 渲染</a>
+    <a class="nav-item" href="ui-components.html#ui-compiler" style="padding-left:40px;font-size:12px;opacity:.7">↳ React Compiler</a>
+    <a class="nav-item" href="ui-components.html#ui-messages" style="padding-left:40px;font-size:12px;opacity:.7">↳ 消息管线</a>
+    <a class="nav-item" href="ui-components.html#ui-virtual" style="padding-left:40px;font-size:12px;opacity:.7">↳ 虚拟滚动</a>
+    <a class="nav-item" href="ui-components.html#ui-fullscreen" style="padding-left:40px;font-size:12px;opacity:.7">↳ 全屏布局</a>
+    <a class="nav-item" href="ui-components.html#ui-perf" style="padding-left:40px;font-size:12px;opacity:.7">↳ 性能工程</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">基础设施</div>
+    <a class="nav-item" href="utils-infra.html#infra">🔩 基础设施</a>
+    <a class="nav-item" href="utils-infra.html#infra-session" style="padding-left:40px;font-size:12px;opacity:.7">↳ 会话持久化</a>
+    <a class="nav-item" href="utils-infra.html#infra-messages" style="padding-left:40px;font-size:12px;opacity:.7">↳ 消息系统</a>
+    <a class="nav-item" href="utils-infra.html#infra-hooks" style="padding-left:40px;font-size:12px;opacity:.7">↳ Hook 引擎</a>
+    <a class="nav-item" href="utils-infra.html#infra-config" style="padding-left:40px;font-size:12px;opacity:.7">↳ 配置与认证</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">React Hooks</div>
+    <a class="nav-item" href="hooks-system.html#hooks">🪝 React Hooks</a>
+    <a class="nav-item" href="hooks-system.html#hooks-input" style="padding-left:40px;font-size:12px;opacity:.7">↳ 输入管线</a>
+    <a class="nav-item" href="hooks-system.html#hooks-virtual" style="padding-left:40px;font-size:12px;opacity:.7">↳ 虚拟滚动</a>
+    <a class="nav-item" href="hooks-system.html#hooks-voice" style="padding-left:40px;font-size:12px;opacity:.7">↳ 语音子系统</a>
+    <a class="nav-item" href="hooks-system.html#hooks-collab" style="padding-left:40px;font-size:12px;opacity:.7">↳ 协作通信</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">渲染引擎</div>
+    <a class="nav-item" href="ink-engine.html#ink">🖼️ Ink 渲染引擎</a>
+    <a class="nav-item" href="ink-engine.html#ink-dom" style="padding-left:40px;font-size:12px;opacity:.7">↳ 自定义 DOM</a>
+    <a class="nav-item" href="ink-engine.html#ink-pipeline" style="padding-left:40px;font-size:12px;opacity:.7">↳ 渲染管线</a>
+    <a class="nav-item" href="ink-engine.html#ink-screen" style="padding-left:40px;font-size:12px;opacity:.7">↳ 屏幕缓冲区</a>
+    <a class="nav-item" href="ink-engine.html#ink-interact" style="padding-left:40px;font-size:12px;opacity:.7">↳ 全屏交互</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">插件系统</div>
+    <a class="nav-item" href="advanced.html#plugins">🔌 插件系统</a>
+    <a class="nav-item" href="advanced.html#plugins-loader" style="padding-left:40px;font-size:12px;opacity:.7">↳ 发现与加载</a>
+    <a class="nav-item" href="advanced.html#plugins-marketplace" style="padding-left:40px;font-size:12px;opacity:.7">↳ Marketplace</a>
+    <a class="nav-item" href="advanced.html#plugins-schema" style="padding-left:40px;font-size:12px;opacity:.7">↳ Schema 安全</a>
+    <a class="nav-item" href="advanced.html#plugins-lifecycle" style="padding-left:40px;font-size:12px;opacity:.7">↳ 验证生命周期</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">Bridge 通信</div>
+    <a class="nav-item" href="bridge.html#bridge">🌉 Bridge 通信</a>
+    <a class="nav-item" href="bridge.html#bridge-api" style="padding-left:40px;font-size:12px;opacity:.7">↳ 环境与轮询</a>
+    <a class="nav-item" href="bridge.html#bridge-repl" style="padding-left:40px;font-size:12px;opacity:.7">↳ REPL Bridge</a>
+    <a class="nav-item" href="bridge.html#bridge-messaging" style="padding-left:40px;font-size:12px;opacity:.7">↳ 消息路由</a>
+    <a class="nav-item" href="bridge.html#bridge-transport" style="padding-left:40px;font-size:12px;opacity:.7">↳ 传输与安全</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">核心服务层</div>
+    <a class="nav-item" href="services-deep.html#services">🔗 核心服务层</a>
+    <a class="nav-item" href="services-deep.html#svc-api" style="padding-left:40px;font-size:12px;opacity:.7">↳ API 通信核心</a>
+    <a class="nav-item" href="services-deep.html#svc-retry" style="padding-left:40px;font-size:12px;opacity:.7">↳ 重试引擎</a>
+    <a class="nav-item" href="services-deep.html#svc-errors" style="padding-left:40px;font-size:12px;opacity:.7">↳ 错误分类</a>
+    <a class="nav-item" href="services-deep.html#svc-mcp" style="padding-left:40px;font-size:12px;opacity:.7">↳ MCP 客户端</a>
+    <a class="nav-item" href="services-deep.html#svc-compact" style="padding-left:40px;font-size:12px;opacity:.7">↳ 上下文压缩</a>
+    <a class="nav-item" href="services-deep.html#svc-cache" style="padding-left:40px;font-size:12px;opacity:.7">↳ 缓存检测</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">工具系统</div>
+    <a class="nav-item" href="tools-deep.html#tools-system">🛠️ 工具系统</a>
+    <a class="nav-item" href="tools-deep.html#tools-bash" style="padding-left:40px;font-size:12px;opacity:.7">↳ BashTool 深剖</a>
+    <a class="nav-item" href="tools-deep.html#tools-panorama" style="padding-left:40px;font-size:12px;opacity:.7">↳ 38 工具全景</a>
+    <a class="nav-item" href="tools-deep.html#tools-client" style="padding-left:40px;font-size:12px;opacity:.7">↳ 多云客户端</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">权限与安全</div>
+    <a class="nav-item" href="tools-deep.html#perm-engine">🛡️ 权限决策引擎</a>
+    <a class="nav-item" href="tools-deep.html#perm-pipeline" style="padding-left:40px;font-size:12px;opacity:.7">↳ 决策管线</a>
+    <a class="nav-item" href="tools-deep.html#perm-yolo" style="padding-left:40px;font-size:12px;opacity:.7">↳ Auto Mode 分类器</a>
+    <a class="nav-item" href="tools-deep.html#perm-modes" style="padding-left:40px;font-size:12px;opacity:.7">↳ 权限模式</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">常量与命令</div>
+    <a class="nav-item" href="config-cmd.html#config-cmd">📜 常量与命令</a>
+    <a class="nav-item" href="config-cmd.html#config-constants" style="padding-left:40px;font-size:12px;opacity:.7">↳ 常量系统</a>
+    <a class="nav-item" href="config-cmd.html#config-commands" style="padding-left:40px;font-size:12px;opacity:.7">↳ 命令系统</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">Agent 与状态</div>
+    <a class="nav-item" href="agent-coord.html#agent-coord">🤖 Agent 协调层</a>
+    <a class="nav-item" href="agent-coord.html#agent-lifecycle" style="padding-left:40px;font-size:12px;opacity:.7">↳ 生命周期</a>
+    <a class="nav-item" href="agent-coord.html#agent-modes" style="padding-left:40px;font-size:12px;opacity:.7">↳ 多智能体模式</a>
+    <a class="nav-item" href="subsystems.html#state-ctx">📊 状态与上下文</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">CLI 与运行时</div>
+    <a class="nav-item" href="cli-transport.html#cli-transport">🖥️ CLI 与传输层</a>
+    <a class="nav-item" href="analytics-ff.html#analytics-ff">📈 分析与特性开关</a>
+    <a class="nav-item" href="model-shell.html#model-shell">🔧 模型与 Shell</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">类型与任务</div>
+    <a class="nav-item" href="types-tasks.html#type-system">📝 类型系统</a>
+    <a class="nav-item" href="types-tasks.html#task-migration">⚙️ 任务与迁移</a>
+  </div>
+
+</nav>
+<main class="main" id="mainContent">
+
+<section class="section" id="services">
+<h2 class="section-title"><span class="icon">🔗</span> 核心服务层 <span class="num">23</span></h2>
+
+<div class="tip tip-method">
+  <strong>🔬 方法论：</strong>本章对 <code>src/services/</code> 下 4 个关键子系统进行源码级深度分析。
+  核心文件：<code>api/claude.ts</code>（3420行/125KB）· <code>api/withRetry.ts</code>（823行）· <code>api/errors.ts</code>（1208行）·
+  <code>api/client.ts</code>（390行）· <code>mcp/client.ts</code>（3349行/119KB）· <code>compact/apiMicrocompact.ts</code>（154行）·
+  <code>api/promptCacheBreakDetection.ts</code>（728行）。
+</div>
+
+<p>Claude Code 的 <code>services/</code> 层是整个产品的 <strong>通信与弹性基座</strong>——它处理与 Anthropic API 的所有交互，
+  管理 MCP 协议连接，实现上下文窗口压缩，并提供 Prompt Cache 命中率监控。这一层的设计直接决定了产品在高负载、多云环境和长会话场景下的稳定性。</p>
+
+<div class="stats-grid">
+  <div class="stat-card"><div class="value">3,420</div><div class="label">claude.ts 行数</div></div>
+  <div class="stat-card"><div class="value">6</div><div class="label">传输协议</div></div>
+  <div class="stat-card"><div class="value">30+</div><div class="label">错误模式</div></div>
+  <div class="stat-card"><div class="value">4</div><div class="label">云平台支持</div></div>
+</div>
+
+<!-- ── 23.1 API 通信核心 ── -->
+<h3 id="svc-api">23.1 API 通信核心</h3>
+
+<p><code>claude.ts</code>（3420行/125KB）是整个 API 通信的入口，其中 <code>queryModel</code> AsyncGenerator 函数是唯一的 LLM 调用路径。
+  它编排了从 off-switch 检查到流式响应解析的完整管线。</p>
+
+<div class="mermaid">
+flowchart TB
+    subgraph PreFlight["预检阶段"]
+        OFF["Off-Switch 检测\nGrowthBook tengu-off-switch"]
+        MODEL["模型解析\nBedrock inference-profile → backing model"]
+        BETA["Beta Header 构建\nisAgenticQuery + Advisor + ToolSearch"]
+    end
+    subgraph ToolPrep["工具准备"]
+        TST["ToolSearch 检测\nisDeferredTool → deferredToolNames"]
+        FILTER["工具过滤\nextractDiscoveredToolNames → filteredTools"]
+        SCHEMA["Schema 构建\ntoolToAPISchema + defer_loading"]
+    end
+    subgraph Request["请求构建 — paramsFromContext"]
+        THINK["Thinking 策略\nadaptive vs budget"]
+        CTX["Context Management\nclear_tool_uses + clear_thinking"]
+        EFFORT["Effort 控制\noutput_config.effort"]
+        CACHE["Cache Breakpoints\naddCacheBreakpoints + global scope"]
+        SPEED["Fast Mode\nspeed='fast' + beta header"]
+    end
+    subgraph Execute["执行 + 重试"]
+        RETRY["withRetry 包装器\n10次默认 / 无限持久"]
+        STREAM["流式响应\nBetaRawMessageStreamEvent"]
+        FALLBACK["非流式降级\nexecuteNonStreamingRequest"]
+    end
+    PreFlight --> ToolPrep
+    ToolPrep --> Request
+    Request --> Execute
+</div>
+
+<h4>queryModel — 全场景 LLM 调用入口</h4>
+<table>
+  <thead><tr><th>阶段</th><th>关键逻辑</th><th>源码位置</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Off-Switch</strong></td><td>非 Subscriber + Opus + GrowthBook <code>tengu-off-switch.activated</code> → 返回 CUSTOM_OFF_SWITCH_MESSAGE</td><td>L1028-1049</td></tr>
+    <tr><td><strong>Advisor 注入</strong></td><td>isAgenticQuery + isAdvisorEnabled → 验证 baseModel 匹配 → 注入 <code>advisor_20260301</code> server tool</td><td>L1080-1116</td></tr>
+    <tr><td><strong>ToolSearch</strong></td><td>isDeferredTool → deferredToolNames Set → extractDiscoveredToolNames → 只发送已发现的工具</td><td>L1120-1172</td></tr>
+    <tr><td><strong>CachedMC</strong></td><td>动态 import cachedMicrocompact → consumePendingCacheEdits → cacheEditingBetaHeader</td><td>L1188-1205</td></tr>
+    <tr><td><strong>GlobalCache</strong></td><td>MCP tool 非defer → needsToolBasedCacheMarker → 降级为 none（MCP per-user 不可全局缓存）</td><td>L1207-1229</td></tr>
+    <tr><td><strong>消息规范化</strong></td><td>normalizeMessagesForAPI → stripToolReferenceBlocks → ensureToolResultPairing → stripAdvisorBlocks → stripExcessMediaItems(100)</td><td>L1266-1315</td></tr>
+    <tr><td><strong>Sticky Latch</strong></td><td>AFK/FastMode/CacheEditing/ThinkingClear 四个 beta header 一旦发送就持续整个会话（防 cache bust）</td><td>L1405-1456</td></tr>
+    <tr><td><strong>Thinking 策略</strong></td><td>adaptive（无 budget）vs enabled（budget=min(maxOutput-1, modelDefault)），CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING 覆盖</td><td>L1596-1630</td></tr>
+  </tbody>
+</table>
+
+<div class="collapsible" onclick="toggleCollapsible(this)">🔑 paramsFromContext — 请求参数组装细节</div>
+<div class="collapsible-body">
+<pre><code class="language-typescript">// paramsFromContext 核心逻辑（简化）
+const paramsFromContext = (retryContext: RetryContext) => {
+  // 1. Beta headers 动态追加（1M / Bedrock / ToolSearch）
+  const betasParams = [...betas]
+  if (getSonnet1mExpTreatmentEnabled(retryContext.model))
+    betasParams.push(CONTEXT_1M_BETA_HEADER)
+
+  // 2. Effort + TaskBudget → output_config
+  const outputConfig: BetaOutputConfig = {}
+  configureEffortParams(effort, outputConfig, extraBody, betasParams, model)
+  configureTaskBudgetParams(taskBudget, outputConfig, betasParams)
+
+  // 3. Thinking: adaptive vs budget
+  if (hasThinking && modelSupportsAdaptiveThinking(model)) {
+    thinking = { type: 'adaptive' }
+  } else {
+    thinking = { budget_tokens: min(maxOutput-1, budget), type: 'enabled' }
+  }
+
+  // 4. Context Management API（服务端工具清理）
+  const contextManagement = getAPIContextManagement({
+    hasThinking, isRedactThinkingActive, clearAllThinking: thinkingClearLatched
+  })
+
+  // 5. Fast Mode: header latched(cache-safe), speed dynamic(cooldown)
+  if (isFastModeForRetry) speed = 'fast'
+
+  // 6. Cache breakpoints + global scope
+  messages: addCacheBreakpoints(messagesForAPI, enablePromptCaching, ...)
+}</code></pre>
+</div>
+
+<!-- ── 23.2 重试引擎 ── -->
+<h3 id="svc-retry">23.2 重试引擎</h3>
+
+<p><code>withRetry.ts</code>（823行）实现了 Claude Code 最核心的弹性机制——一个 AsyncGenerator 包装器，
+  能在网络故障、过载、认证过期等各种异常场景下保证请求最终成功。</p>
+
+<table>
+  <thead><tr><th>参数</th><th>默认值</th><th>Persistent 模式</th><th>设计理由</th></tr></thead>
+  <tbody>
+    <tr><td><strong>maxRetries</strong></td><td>10</td><td>∞</td><td>常规场景 + 无人值守场景</td></tr>
+    <tr><td><strong>初始延迟</strong></td><td>500ms</td><td>500ms</td><td>快速首次重试</td></tr>
+    <tr><td><strong>最大延迟</strong></td><td>32s</td><td>5min</td><td>指数退避上限</td></tr>
+    <tr><td><strong>Jitter</strong></td><td>25%</td><td>25%</td><td>随机化防止惊群效应</td></tr>
+    <tr><td><strong>重置时间</strong></td><td>—</td><td>6h</td><td>长时间运行防止 backoff 永久累积</td></tr>
+    <tr><td><strong>HEARTBEAT_INTERVAL_MS</strong></td><td>30s</td><td>30s</td><td>chunked sleep yield SystemMessage 防容器 idle-kill</td></tr>
+  </tbody>
+</table>
+
+<h4>529 过载降级策略</h4>
+<div class="mermaid">
+flowchart LR
+    E529["529 Overloaded"] --> CHK{"QuerySource?"}
+    CHK -->|FOREGROUND| RETRY3["重试3次"]
+    CHK -->|BACKGROUND| DROP["直接丢弃\n后台查询不阻塞"]
+    RETRY3 --> FB{"失败3次?"}
+    FB -->|是| FALL["fallbackModel\nOpus → Sonnet"]
+    FB -->|否| OK["成功返回"]
+    FALL --> YIELD["yield SystemMessage\n通知用户降级"]
+</div>
+
+<h4>认证刷新链</h4>
+<table>
+  <thead><tr><th>错误</th><th>检测</th><th>恢复动作</th></tr></thead>
+  <tbody>
+    <tr><td><strong>OAuth 401</strong></td><td>status === 401</td><td>handleOAuth401Error → refresh token → 重建 client</td></tr>
+    <tr><td><strong>OAuth 403</strong></td><td>status === 403</td><td>clearKeychainCache → 重建 client</td></tr>
+    <tr><td><strong>Bedrock IAM</strong></td><td>expired credentials</td><td>refreshAndGetAwsCredentials → 新 accessKey/secretKey</td></tr>
+    <tr><td><strong>Vertex GCP</strong></td><td>auth error</td><td>refreshGcpCredentialsIfNeeded → 新 GoogleAuth</td></tr>
+    <tr><td><strong>ECONNRESET</strong></td><td>isTransientConnectionError</td><td>disableKeepAlive=true → fresh TCP connection</td></tr>
+  </tbody>
+</table>
+
+<!-- ── 23.3 错误分类引擎 ── -->
+<h3 id="svc-errors">23.3 错误分类引擎</h3>
+
+<p><code>errors.ts</code>（1208行）将原始 API 异常转换为用户可理解的恢复指令。<code>getAssistantMessageFromError</code> 是核心函数，
+  它通过 30+ 种模式匹配精确识别错误根因。</p>
+
+<table>
+  <thead><tr><th>错误类别</th><th>检测模式</th><th>用户恢复指令</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Prompt Too Long</strong></td><td>prompt_too_long + max_tokens 提取</td><td>提示使用 <code>/compact</code> 压缩上下文</td></tr>
+    <tr><td><strong>Output Overflow</strong></td><td>output_limit_reached + max_tokens</td><td>建议降低 max_output_tokens</td></tr>
+    <tr><td><strong>Media Size</strong></td><td>image/pdf "exceeds" 正则</td><td>图片 &gt;20MB 或 PDF &gt;32MB 提示压缩</td></tr>
+    <tr><td><strong>Rate Limit v2</strong></td><td>unified-representative-claim headers</td><td>显示 five_hour/seven_day/opus 限额 + overage 状态</td></tr>
+    <tr><td><strong>Tool Mismatch</strong></td><td>tool_use/tool_result 序列不匹配</td><td>建议 <code>/rewind</code> 回退会话</td></tr>
+    <tr><td><strong>Auth Failure</strong></td><td>401/403/invalid_api_key</td><td>提示重新登录或检查 API Key</td></tr>
+    <tr><td><strong>Not Found</strong></td><td>404 + model_not_found</td><td>建议检查 region/model 配置</td></tr>
+    <tr><td><strong>Connection</strong></td><td>ECONNRESET/EPIPE/timeout</td><td>自动重试 + 通知用户</td></tr>
+  </tbody>
+</table>
+
+<div class="collapsible" onclick="toggleCollapsible(this)">📊 Reactive Compact 集成 — Prompt Too Long 智能处理</div>
+<div class="collapsible-body">
+<pre><code class="language-text">Prompt Too Long 处理流程：
+
+1. 解析 API 响应中的 max_tokens / requested_tokens
+2. 计算 token gap = requested - max
+3. 通过 getPromptTooLongTokenGap 存储 gap
+4. 下一次 compact 时：
+   ├── 如果 gap > 单 group 大小 → 一次跳过多个 group
+   ├── 而非逐 group 压缩（省去多轮 API 调用）
+   └── 快速收敛到可用上下文窗口大小
+
+Rate Limit v2 Headers：
+  x-anthropic-unified-representative-claim:
+    type: "five_hour" | "seven_day" | "opus"
+    limit: number
+    remaining: number
+    reset: ISO8601
+  x-anthropic-overage-status:
+    "enabled" | "disabled" | "opted-out"</code></pre>
+</div>
+
+<!-- ── 23.4 MCP 客户端 ── -->
+<h3 id="svc-mcp">23.4 MCP 客户端</h3>
+
+<p><code>mcp/client.ts</code>（3349行/119KB）实现了完整的 MCP 协议客户端，支持 <strong>6 种传输协议</strong>，
+  管理 OAuth 认证链、Session 过期恢复和批量连接控制。</p>
+
+<h4>6 种传输协议</h4>
+<table>
+  <thead><tr><th>协议</th><th>传输类</th><th>认证</th><th>使用场景</th></tr></thead>
+  <tbody>
+    <tr><td><strong>stdio</strong></td><td><code>StdioClientTransport</code></td><td>—</td><td>本地进程（默认）</td></tr>
+    <tr><td><strong>sse</strong></td><td><code>SSEClientTransport</code></td><td>ClaudeAuthProvider + OAuth</td><td>远程 SSE 服务器</td></tr>
+    <tr><td><strong>sse-ide</strong></td><td><code>SSEClientTransport</code></td><td>无认证（IDE 内部）</td><td>VS Code 等 IDE 内建</td></tr>
+    <tr><td><strong>ws</strong></td><td><code>WebSocketTransport</code></td><td>Session-Ingress JWT</td><td>远程 WebSocket</td></tr>
+    <tr><td><strong>ws-ide</strong></td><td><code>WebSocketTransport</code></td><td>X-Claude-Code-Ide-Authorization</td><td>IDE WebSocket</td></tr>
+    <tr><td><strong>http</strong></td><td><code>StreamableHTTPClientTransport</code></td><td>ClaudeAuthProvider + Step-up</td><td>MCP Streamable HTTP (2025-03-26)</td></tr>
+  </tbody>
+</table>
+
+<h4>关键弹性机制</h4>
+<table>
+  <thead><tr><th>机制</th><th>实现</th><th>关键数值</th></tr></thead>
+  <tbody>
+    <tr><td><strong>批量连接</strong></td><td>pMap + concurrency limit</td><td>本地 3 并发 / 远程 20 并发</td></tr>
+    <tr><td><strong>Session 过期</strong></td><td>McpSessionExpiredError → cache 清除 → retry</td><td>HTTP 404 + JSON-RPC -32001</td></tr>
+    <tr><td><strong>Auth Cache</strong></td><td>mcp-needs-auth-cache.json + 15min TTL</td><td>防止 30+ 服务器同时 401 重试</td></tr>
+    <tr><td><strong>连接超时</strong></td><td>MCP_TIMEOUT env / 30s default</td><td>30,000ms</td></tr>
+    <tr><td><strong>工具超时</strong></td><td>MCP_TOOL_TIMEOUT env / ~27.8h default</td><td>100,000,000ms</td></tr>
+    <tr><td><strong>描述裁剪</strong></td><td>MAX_MCP_DESCRIPTION_LENGTH</td><td>2048 chars（防 OpenAPI dump）</td></tr>
+    <tr><td><strong>请求超时</strong></td><td>wrapFetchWithTimeout（POST only, GET 豁免）</td><td>60s per request（非 SSE stream）</td></tr>
+  </tbody>
+</table>
+
+<div class="collapsible" onclick="toggleCollapsible(this)">🔐 OAuth 认证链 — claude.ai Proxy Fetch</div>
+<div class="collapsible-body">
+<pre><code class="language-typescript">// createClaudeAiProxyFetch — claude.ai MCP 代理认证
+// 关键设计：401 自动重试 + 并发安全
+export function createClaudeAiProxyFetch(innerFetch: FetchLike): FetchLike {
+  return async (url, init) => {
+    const doRequest = async () => {
+      await checkAndRefreshOAuthTokenIfNeeded()
+      const currentTokens = getClaudeAIOAuthTokens()
+      headers.set('Authorization', `Bearer ${currentTokens.accessToken}`)
+      const response = await innerFetch(url, { ...init, headers })
+      // 返回发送时的 token（非最新 token）防止并发 refresh 竞态
+      return { response, sentToken: currentTokens.accessToken }
+    }
+    const { response, sentToken } = await doRequest()
+    if (response.status !== 401) return response
+    // handleOAuth401Error 返回 true → token 已更换 → 重试
+    const tokenChanged = await handleOAuth401Error(sentToken)
+    if (!tokenChanged) {
+      // ELOCKED 竞态：另一个连接器可能已 refresh
+      const now = getClaudeAIOAuthTokens()?.accessToken
+      if (!now || now === sentToken) return response
+    }
+    return (await doRequest()).response
+  }
+}</code></pre>
+</div>
+
+<!-- ── 23.5 上下文压缩 ── -->
+<h3 id="svc-compact">23.5 上下文压缩</h3>
+
+<p><code>compact/apiMicrocompact.ts</code>（154行）实现了服务端 Context Management API——通过 <code>context_management.edits</code> 字段
+  指示 API 在达到 token 阈值时自动清理历史消息中的工具调用内容和思考过程。</p>
+
+<h4>两种编辑策略</h4>
+<table>
+  <thead><tr><th>策略</th><th>类型</th><th>触发条件</th><th>保留目标</th></tr></thead>
+  <tbody>
+    <tr><td><strong>清理 Tool Uses</strong></td><td><code>clear_tool_uses_20250919</code></td><td>input_tokens &gt; 180K</td><td>保留最近 40K tokens</td></tr>
+    <tr><td><strong>清理 Thinking</strong></td><td><code>clear_thinking_20251015</code></td><td>always（有 thinking 时）</td><td>保留全部 or 仅最后 1 turn（&gt;1h idle）</td></tr>
+  </tbody>
+</table>
+
+<h4>工具分类白名单</h4>
+<table>
+  <thead><tr><th>类别</th><th>工具列表</th><th>语义</th></tr></thead>
+  <tbody>
+    <tr><td><strong>可清理结果</strong></td><td>Shell, Glob, Grep, FileRead, WebFetch, WebSearch</td><td>输出可丢弃（再执行即可恢复）</td></tr>
+    <tr><td><strong>可清理操作</strong></td><td>FileEdit, FileWrite, NotebookEdit</td><td>操作效果已落盘（清理输入参数）</td></tr>
+    <tr><td><strong>不可清理</strong></td><td>其他所有工具</td><td>上下文依赖的关键信息</td></tr>
+  </tbody>
+</table>
+
+<!-- ── 23.6 缓存检测 ── -->
+<h3 id="svc-cache">23.6 Prompt Cache 命中检测</h3>
+
+<p><code>promptCacheBreakDetection.ts</code>（728行）实现了一个精密的 <strong>二阶段 Cache Break 检测系统</strong>——
+  Phase 1（pre-call）记录当前 prompt/tool 状态快照，Phase 2（post-call）比对 API 响应中的 cache_read_input_tokens 变化来诊断缓存命中失败的原因。</p>
+
+<table>
+  <thead><tr><th>追踪维度</th><th>字段</th><th>变更信号</th></tr></thead>
+  <tbody>
+    <tr><td><strong>System Prompt</strong></td><td>systemHash + systemCharCount</td><td>char delta + diff 文件</td></tr>
+    <tr><td><strong>Tool Schemas</strong></td><td>toolsHash + perToolHashes</td><td>added/removed/changed 工具名</td></tr>
+    <tr><td><strong>Cache Control</strong></td><td>cacheControlHash</td><td>scope flip (global↔org)</td></tr>
+    <tr><td><strong>Model</strong></td><td>model string</td><td>Opus → Sonnet 切换</td></tr>
+    <tr><td><strong>Beta Headers</strong></td><td>sorted betas[]</td><td>+/- header diff</td></tr>
+    <tr><td><strong>Fast Mode</strong></td><td>fastMode boolean</td><td>toggle 事件</td></tr>
+    <tr><td><strong>Effort</strong></td><td>effortValue string</td><td>default → high/low</td></tr>
+    <tr><td><strong>Extra Body</strong></td><td>extraBodyHash</td><td>CLAUDE_CODE_EXTRA_BODY 变更</td></tr>
+  </tbody>
+</table>
+
+<h4>误报抑制</h4>
+<ul>
+  <li><strong>最小绝对 token 下降</strong>：<code>MIN_CACHE_MISS_TOKENS = 2,000</code>（小于此值不报警）</li>
+  <li><strong>相对下降检测</strong>：<code>cacheReadTokens >= prevCacheRead * 0.95</code> → 忽略（&lt;5% 波动）</li>
+  <li><strong>TTL 过期识别</strong>：检测 lastAssistantMsg 距今 &gt;5min → "possible 5min TTL expiry"</li>
+  <li><strong>CacheDeletion 标记</strong>：cached microcompact 删除后标记 <code>cacheDeletionsPending</code>，下次响应不报 break</li>
+  <li><strong>MAX_TRACKED_SOURCES = 10</strong>：LRU 驱逐防止子代理导致无界内存增长</li>
+</ul>
+
+<div class="tip tip-key">
+  <strong>🔑 一句话总结：</strong><code>services/</code> 是 Claude Code 的 <strong>通信与弹性基座</strong>。<code>queryModel</code> 通过 ToolSearch 延迟加载 + Sticky Latch Beta Headers + Context Management API 实现了缓存友好的请求构建；<code>withRetry</code> 以 10 次默认/无限持久重试 + 529 降级链 + 多云认证刷新保证请求最终成功；<code>errors.ts</code> 用 30+ 模式匹配将原始 API 异常转化为可操作的恢复指令；MCP 客户端支持 6 种传输协议 + 批量连接控制 + Session 过期自动恢复；<code>apiMicrocompact</code> 通过可清理/不可清理工具分类实现 180K→40K 的智能上下文压缩；Cache Break Detection 以二阶段快照比对 + 5 层误报抑制精确诊断缓存失效根因。
+</div>
+
+</section>
+
+<!-- ==================== §35 SERVICES DEEP DIVES ==================== -->
+
+<section class="section" id="svc-autodream">
+<h2 class="section-title"><span class="icon">💭</span> autoDream — 后台记忆整合引擎（550行） <span class="num">35</span></h2>
+
+<p><code>autoDream/</code>（4 文件/550行）实现了 Claude Code 的 <strong>「做梦」机制</strong>——
+  不是比喻，而是字面意义上的：当用户不使用 Claude 时（空闲 ≥24 小时），
+  系统自动启动一个子 Agent 审查最近的会话记录，将分散的知识整合写入记忆文件。</p>
+
+<h3 id="svc-autodream-gates">35.1 三层门控（Gate）</h3>
+<table>
+  <thead><tr><th>门控</th><th>条件</th><th>开销</th><th>目的</th></tr></thead>
+  <tbody>
+    <tr><td><strong>时间门</strong></td><td>距上次整合 ≥ <code>minHours</code>（默认 24h）</td><td>1 次 stat 调用</td><td>防止频繁触发</td></tr>
+    <tr><td><strong>会话门</strong></td><td>新会话数 ≥ <code>minSessions</code>（默认 5）</td><td>目录扫描（10分钟节流）</td><td>确保有足够素材</td></tr>
+    <tr><td><strong>锁门</strong></td><td><code>tryAcquireConsolidationLock()</code> 成功</td><td>文件锁</td><td>防并发整合</td></tr>
+  </tbody>
+</table>
+
+<h3 id="svc-autodream-flow">35.2 执行流程</h3>
+<ul>
+  <li><strong>触发点</strong>：每次 query 响应后的 <code>stopHooks</code>（postSamplingHooks）</li>
+  <li><strong>子 Agent 执行</strong>：通过 <code>runForkedAgent()</code> 启动隔离执行环境，使用 <code>consolidationPrompt</code></li>
+  <li><strong>工具约束</strong>：Bash 限制为只读命令（ls/find/grep/cat），File Edit/Write 只允许操作 <code>memoryRoot</code></li>
+  <li><strong>进度监控</strong>：<code>makeDreamProgressWatcher()</code> 跟踪每个 assistant turn 的内容和工具调用</li>
+  <li><strong>完成回调</strong>：通过 <code>appendSystemMessage</code> 在主对话中插入 "Improved N memory files" 通知</li>
+  <li><strong>失败回滚</strong>：<code>rollbackConsolidationLock(priorMtime)</code> 回退时间戳，让下次重试</li>
+</ul>
+
+<h3 id="svc-autodream-kairos">35.3 与 Kairos 的关系</h3>
+<p>当 <code>getKairosActive()</code> 为 true 时，autoDream <strong>自动禁用</strong>——因为 Kairos 模式下
+  有自己的 disk-skill dream 机制。Remote 模式下同样禁用（远程环境的文件系统权限不同）。
+  配置来自 GrowthBook A/B 测试系统 (<code>tengu_onyx_plover</code> feature flag)。</p>
+</section>
+
+<section class="section" id="svc-prompt-suggestion">
+<h2 class="section-title"><span class="icon">💡</span> PromptSuggestion — 智能建议引擎（1514行） <span class="num">35.4</span></h2>
+
+<p><code>PromptSuggestion/</code>（2 文件/1514行）在用户输入时提供上下文感知的命令/操作建议。
+  它分析当前项目结构、对话历史、工具使用模式，生成个性化的"接下来你可能想做..."提示。
+  建议来源包括：最近的 git 变更、未完成的 TODO、常用工具组合模式、
+  以及基于 GrowthBook 的 A/B 实验推荐。建议结果缓存到内存中，每次用户 idle 时刷新。</p>
+</section>
+
+<section class="section" id="svc-session-memory">
+<h2 class="section-title"><span class="icon">📚</span> SessionMemory — 会话记忆持久化（1026行） <span class="num">35.5</span></h2>
+
+<p><code>SessionMemory/</code>（3 文件/1026行）管理跨会话的记忆持久化。每次会话结束时，
+  自动提取关键知识点（代码架构决策、用户偏好、项目约束）写入结构化记忆文件。
+  记忆按 scope 分层存储——全局 (<code>~/.claude/memory/</code>)、项目 (<code>.claude/memory/</code>)。
+  加载时按优先级合并：项目级覆盖全局级。与 <code>extractMemories</code> 服务（769行）协作，
+  后者负责从对话消息中自动提取值得记忆的知识片段。</p>
+</section>
+
+<section class="section" id="svc-team-memory">
+<h2 class="section-title"><span class="icon">👥</span> teamMemorySync — 团队记忆同步（2167行） <span class="num">35.6</span></h2>
+
+<p><code>teamMemorySync/</code>（5 文件/2167行）实现团队级记忆的同步与冲突解决。当团队成员共享
+  同一项目的 <code>.claude/</code> 目录时，记忆文件可能产生冲突。该服务使用 <strong>CRDT-like</strong>
+  的合并策略——每条记忆条目带有时间戳和作者标识，冲突时按"最新写入者优先"合并，
+  并保留冲突详情供人工审核。同步通过 git 机制触发（push/pull 时自动检测变更）。</p>
+</section>
+
+<!-- ==================== §24 TOOLS SYSTEM ==================== -->
+
+
+</main>
+<button class="back-top" id="backTop" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button>
+<script src="js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,642 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>上下文管理 — Claude Code v2.1.88 架构深度解析</title>
+<meta name="description" content="基于 Source Map 逆向还原的 Claude Code 架构核心概念与源码解析">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-jsx.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-tsx.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+<script type="module">
+import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+mermaid.initialize({startOnLoad:true,theme:"dark",themeVariables:{primaryColor:"#6d28d9",primaryTextColor:"#e2e8f0",primaryBorderColor:"#7c3aed",lineColor:"#7c3aed",secondaryColor:"#1e1b4b",tertiaryColor:"#0f172a"}});
+</script>
+<style>
+
+
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#05050a;--bg2:#0a0a16;--surface:rgba(20,20,38,.5);--surface2:rgba(35,35,65,.6);--border:rgba(255,255,255,.08);--border-hover:rgba(139,92,246,.5);--text:#f8fafc;--text2:#94a3b8;--text3:#64748b;--accent:#8b5cf6;--accent2:#6d28d9;--accent3:#c084fc;--green:#10b981;--blue:#3b82f6;--orange:#f59e0b;--red:#ef4444;--pink:#ec4899;--cyan:#06b6d4;--sidebar-w:280px;--header-h:64px}
+html{scroll-behavior:smooth;scroll-padding-top:80px}
+body{font-family:'Inter',system-ui,sans-serif;background-color:var(--bg);background-image:radial-gradient(circle at 15% 0%,rgba(139,92,246,.15) 0,transparent 30%),radial-gradient(circle at 85% 10%,rgba(6,182,212,.1) 0,transparent 30%);background-attachment:fixed;color:var(--text);line-height:1.7;overflow-x:hidden}
+::-webkit-scrollbar{width:6px}
+::-webkit-scrollbar-track{background:rgba(0,0,0,.2)}
+::-webkit-scrollbar-thumb{background:var(--surface2);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:var(--accent)}
+a{color:var(--accent3);text-decoration:none;transition:color .2s}
+a:hover{color:var(--cyan)}
+code{font-family:'JetBrains Mono',monospace}
+/* Header */
+.header{position:fixed;top:0;left:0;right:0;height:var(--header-h);background:rgba(5,5,10,.6);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 24px;z-index:100;gap:16px}
+.header .logo{font-size:22px;font-weight:900;letter-spacing:-.5px;background:linear-gradient(135deg,#c084fc,#38bdf8,#818cf8);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.header .version{font-size:12px;padding:2px 10px;border-radius:99px;background:var(--surface);color:var(--accent3);border:1px solid var(--border);font-weight:600;box-shadow:inset 0 1px 0 rgba(255,255,255,.1)}
+.header .search-box{flex:1;max-width:400px;margin-left:auto}
+.header .search-box input{width:100%;padding:10px 16px;border-radius:12px;border:1px solid var(--border);background:var(--surface);backdrop-filter:blur(10px);color:var(--text);font-size:14px;outline:none;transition:all .3s ease;box-shadow:inset 0 1px 2px rgba(0,0,0,.2)}
+.header .search-box input:focus{border-color:var(--accent);background:rgba(20,20,40,.8);box-shadow:0 0 0 4px rgba(139,92,246,.1)}
+.menu-btn{display:none;background:none;border:none;color:var(--text);font-size:24px;cursor:pointer}
+/* Sidebar */
+.sidebar{position:fixed;left:0;top:var(--header-h);bottom:0;width:var(--sidebar-w);background:rgba(10,10,22,.6);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-right:1px solid var(--border);overflow-y:auto;padding:20px 0;z-index:90;transition:transform .3s cubic-bezier(.4,0,.2,1)}
+.sidebar .nav-group{margin-bottom:12px}
+.sidebar .nav-group-title{padding:10px 20px;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:rgba(255,255,255,.3)}
+.sidebar .nav-item{display:block;padding:8px 20px 8px 28px;font-size:13px;font-weight:500;color:var(--text2);transition:all .25s ease;border-left:3px solid transparent;cursor:pointer}
+.sidebar .nav-item:hover{color:#fff;background:linear-gradient(90deg,var(--surface),transparent)}
+.sidebar .nav-item.active{color:var(--accent3);border-left-color:var(--accent);background:linear-gradient(90deg,rgba(139,92,246,.1),transparent);text-shadow:0 0 8px rgba(192,132,252,.3)}
+/* Main */
+.main{margin-left:var(--sidebar-w);margin-top:var(--header-h);padding:40px 60px 80px;max-width:1040px}
+/* Sections */
+.section{margin-bottom:80px;animation:fadeIn .6s cubic-bezier(.16,1,.3,1)}
+@keyframes fadeIn{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:translateY(0)}}
+.section-title{font-size:32px;font-weight:900;letter-spacing:-.5px;margin-bottom:32px;padding-bottom:16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;position:relative}
+.section-title::after{content:'';position:absolute;left:0;bottom:-1px;height:1px;width:100px;background:linear-gradient(90deg,var(--accent),transparent)}
+.section-title .icon{font-size:32px;filter:drop-shadow(0 0 12px rgba(139,92,246,.4))}
+.section-title .num{font-size:13px;padding:4px 12px;border-radius:99px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;font-weight:700;box-shadow:0 4px 12px rgba(109,40,217,.3)}
+h3{font-size:22px;font-weight:800;letter-spacing:-.3px;margin:36px 0 16px;background:linear-gradient(135deg,#fff,#cbd5e1);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+h4{font-size:16px;font-weight:700;margin:24px 0 10px;color:var(--accent3)}
+p{margin-bottom:16px;color:var(--text2);font-size:15px}
+ul,ol{margin:12px 0 20px 24px;color:var(--text2);font-size:15px}
+li{margin-bottom:6px}
+li::marker{color:var(--accent)}
+strong{color:#fff;font-weight:600}
+/* Cards */
+.card{background:var(--surface);backdrop-filter:blur(16px);border:1px solid var(--border);border-radius:16px;padding:24px;margin:20px 0;transition:all .4s cubic-bezier(.16,1,.3,1);box-shadow:0 4px 20px rgba(0,0,0,.2),inset 0 1px 0 rgba(255,255,255,.05)}
+.card:hover{transform:translateY(-4px);border-color:var(--border-hover);box-shadow:0 12px 40px rgba(0,0,0,.4),0 0 20px rgba(139,92,246,.15),inset 0 1px 0 rgba(255,255,255,.1)}
+.card-title{font-size:18px;font-weight:800;margin-bottom:12px;color:#fff}
+/* Stats Grid */
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin:24px 0}
+.stat-card{background:var(--surface);backdrop-filter:blur(16px);border:1px solid var(--border);border-radius:16px;padding:24px;text-align:center;transition:all .4s ease;box-shadow:inset 0 1px 0 rgba(255,255,255,.02)}
+.stat-card:hover{transform:translateY(-4px) scale(1.02);border-color:var(--border-hover);background:linear-gradient(180deg,rgba(35,35,65,.8),rgba(20,20,38,.5))}
+.stat-card .value{font-size:36px;font-weight:900;letter-spacing:-1px;background:linear-gradient(135deg,#c084fc,#38bdf8);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;filter:drop-shadow(0 2px 8px rgba(56,189,248,.3))}
+.stat-card .label{font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--text3);margin-top:8px}
+/* Table */
+table{width:100%;border-collapse:separate;border-spacing:0;margin:24px 0;font-size:14px;border-radius:12px;overflow:hidden;border:1px solid var(--border);background:var(--surface)}
+th{background:rgba(255,255,255,.03);padding:14px 18px;text-align:left;font-weight:700;color:var(--accent3);border-bottom:1px solid var(--border)}
+td{padding:14px 18px;border-bottom:1px solid var(--border);color:var(--text2)}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:rgba(255,255,255,.02)}
+/* Code blocks / Collapsible */
+pre[class*="language-"]{border-radius:12px!important;margin:16px 0!important;border:1px solid var(--border)!important;font-size:13px!important;background:#0d0d16!important;box-shadow:inset 0 2px 10px rgba(0,0,0,.4)}
+.collapsible{margin:16px 0;border-radius:12px;overflow:hidden;border:1px solid var(--border);background:var(--surface);transition:border-color .3s;box-shadow:inset 0 1px 0 rgba(255,255,255,.05)}
+.collapsible:hover{border-color:var(--border-hover)}
+.collapsible-header{display:flex;align-items:center;gap:12px;padding:14px 20px;cursor:pointer;font-size:14px;font-weight:700;color:#fff;transition:all .3s;user-select:none;background:rgba(255,255,255,.02)}
+.collapsible-header:hover{background:rgba(255,255,255,.05)}
+.collapsible-header .arrow{transition:transform .3s cubic-bezier(.4,0,.2,1);font-size:12px;color:var(--text3)}
+.collapsible-header.open .arrow{transform:rotate(90deg);color:var(--accent3)}
+.collapsible-body{display:none;border-top:1px solid var(--border);background:#0d0d16}
+.collapsible-body.show{display:block;animation:slideDown .3s ease}
+@keyframes slideDown{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:translateY(0)}}
+.collapsible-body pre{margin:0!important;border:none!important;border-radius:0!important;box-shadow:none}
+/* Tags */
+.tag{display:inline-block;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:700;letter-spacing:.5px;margin:2px 4px 2px 0;text-transform:uppercase}
+.tag-purple{background:rgba(192,132,252,.15);color:#d8b4fe;border:1px solid rgba(192,132,252,.3)}
+.tag-green{background:rgba(16,185,129,.15);color:#6ee7b7;border:1px solid rgba(16,185,129,.3)}
+.tag-blue{background:rgba(59,130,246,.15);color:#93c5fd;border:1px solid rgba(59,130,246,.3)}
+.tag-orange{background:rgba(245,158,11,.15);color:#fcd34d;border:1px solid rgba(245,158,11,.3)}
+.tag-red{background:rgba(239,68,68,.15);color:#fca5a5;border:1px solid rgba(239,68,68,.3)}
+.tag-cyan{background:rgba(6,182,212,.15);color:#67e8f9;border:1px solid rgba(6,182,212,.3)}
+.tag-pink{background:rgba(236,72,153,.15);color:#f9a8d4;border:1px solid rgba(236,72,153,.3)}
+/* Mermaid */
+.mermaid{margin:24px 0;padding:24px;background:var(--surface);backdrop-filter:blur(10px);border:1px solid var(--border);border-radius:16px;overflow-x:auto;box-shadow:inset 0 1px 0 rgba(255,255,255,.05);transition:border-color .3s}
+.mermaid:hover{border-color:rgba(139,92,246,.3)}
+/* Tips */
+.tip{padding:16px 20px;border-radius:12px;margin:20px 0;font-size:14.5px;border:1px solid var(--border);border-left:4px solid;backdrop-filter:blur(10px)}
+.tip-info{background:rgba(59,130,246,.05);border-left-color:var(--blue);border-color:rgba(59,130,246,.2)}
+.tip-warn{background:rgba(245,158,11,.05);border-left-color:var(--orange);border-color:rgba(245,158,11,.2)}
+.tip-key{background:rgba(139,92,246,.05);border-left-color:var(--accent);border-color:rgba(139,92,246,.2);box-shadow:0 4px 20px rgba(139,92,246,.05)}
+/* Back to top */
+.back-top{position:fixed;bottom:32px;right:32px;width:48px;height:48px;border-radius:50%;background:linear-gradient(135deg,var(--accent2),var(--accent));color:#fff;border:none;font-size:22px;cursor:pointer;display:none;align-items:center;justify-content:center;box-shadow:0 8px 24px rgba(109,40,217,.4),inset 0 1px 0 rgba(255,255,255,.2);transition:all .3s cubic-bezier(.16,1,.3,1);z-index:99}
+.back-top:hover{transform:translateY(-6px);box-shadow:0 12px 32px rgba(109,40,217,.6),inset 0 1px 0 rgba(255,255,255,.3)}
+.back-top.show{display:flex}
+/* Responsive */
+@media(max-width:900px){
+.sidebar{transform:translateX(-100%)}
+.sidebar.open{transform:translateX(0)}
+.main{margin-left:0;padding:24px 20px 80px}
+.menu-btn{display:block}
+:root{--sidebar-w:260px}
+.section-title{font-size:26px}
+.stats-grid{grid-template-columns:1fr}
+}
+/* File tree */
+.file-tree{font-family:'JetBrains Mono',monospace;font-size:13px;background:rgba(10,10,16,.8);border:1px solid var(--border);border-radius:12px;padding:20px;margin:16px 0;line-height:1.9;box-shadow:inset 0 2px 10px rgba(0,0,0,.3)}
+.file-tree .dir{color:var(--accent3);font-weight:600}
+.file-tree .file{color:var(--text2)}
+.file-tree .comment{color:var(--text3);font-style:italic}
+/* Flow arrow */
+.flow-step{display:flex;align-items:center;gap:16px;margin:10px 0;padding:12px 20px;background:var(--surface);border:1px solid var(--border);border-radius:12px;font-size:14.5px;transition:transform .2s;box-shadow:inset 0 1px 0 rgba(255,255,255,.02)}
+.flow-step:hover{transform:translateX(4px);border-color:var(--border-hover)}
+.flow-step .step-num{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,var(--accent2),var(--accent));color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;flex-shrink:0;box-shadow:0 2px 8px rgba(109,40,217,.3)}
+.flow-arrow{text-align:center;color:var(--accent3);font-size:20px;margin:6px 0;opacity:.7}
+/* Inline code */
+:not(pre)>code{background:rgba(255,255,255,.05);padding:3px 8px;border-radius:6px;font-size:13px;color:#c084fc;border:1px solid rgba(255,255,255,.05)}
+
+
+</style>
+</head>
+<body>
+<header class="header">
+  <button class="menu-btn" onclick="document.querySelector('.sidebar').classList.toggle('open')">&#9776;</button>
+  <div class="logo"><a href="index.html">Claude Code 架构解析</a></div>
+  <span class="version">v2.1.88</span>
+  <div class="search-box"><input type="text" id="searchInput" placeholder="&#x1F50D; 搜索章节内容..." oninput="handleSearch(this.value)"></div>
+</header>
+<nav class="sidebar" id="sidebar">
+
+  <div class="nav-group">
+    <div class="nav-group-title">概览</div>
+    <a class="nav-item" href="index.html#overview">📋 项目概览</a>
+    <a class="nav-item" href="index.html#structure">📁 目录结构</a>
+    <a class="nav-item" href="index.html#arch">🏗️ 架构分层</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">核心引擎</div>
+    <a class="nav-item" href="core-engine.html#startup">🚀 启动流程</a>
+    <a class="nav-item" href="core-engine.html#tool-system">🔧 Tool 系统</a>
+    <a class="nav-item" href="core-engine.html#bash-security">🛡️ 安全沙箱</a>
+    <a class="nav-item" href="core-engine.html#query-loop">🔄 Query Loop</a>
+    <a class="nav-item" href="core-engine.html#query-engine">⚙️ QueryEngine</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">入口与引导</div>
+    <a class="nav-item" href="entrypoints.html#entrypoints">🚪 入口引导层</a>
+    <a class="nav-item" href="entrypoints.html#cli-bootstrap" style="padding-left:40px;font-size:12px;opacity:.7">↳ CLI Fast-Path</a>
+    <a class="nav-item" href="entrypoints.html#init-chain" style="padding-left:40px;font-size:12px;opacity:.7">↳ 初始化管线</a>
+    <a class="nav-item" href="entrypoints.html#mcp-server" style="padding-left:40px;font-size:12px;opacity:.7">↳ MCP Server</a>
+    <a class="nav-item" href="entrypoints.html#agent-sdk" style="padding-left:40px;font-size:12px;opacity:.7">↳ Agent SDK</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">子系统</div>
+    <a class="nav-item" href="subsystems.html#commands">💬 命令系统</a>
+    <a class="nav-item" href="subsystems.html#permissions">🔐 权限系统</a>
+    <a class="nav-item" href="subsystems.html#state">📦 状态管理</a>
+    <a class="nav-item" href="subsystems.html#api">🌐 API 通信</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">高级特性</div>
+    <a class="nav-item" href="advanced.html#coordinator">🤖 多Agent协调</a>
+    <a class="nav-item" href="advanced.html#mcp">🔌 MCP 集成</a>
+    <a class="nav-item" href="advanced.html#tasks">⚙️ 后台任务</a>
+    <a class="nav-item" href="advanced.html#plugins">📦 插件与技能</a>
+    <a class="nav-item" href="advanced.html#feature-flags">🚩 Feature Flags</a>
+    <a class="nav-item" href="context.html#context">🧠 上下文管理</a>
+    <a class="nav-item" href="context.html#ctx-search" style="padding-left:40px;font-size:12px;opacity:.7">↳ Grep vs RAG</a>
+    <a class="nav-item" href="context.html#ctx-memory" style="padding-left:40px;font-size:12px;opacity:.7">↳ 6层记忆体系</a>
+    <a class="nav-item" href="context.html#ctx-recall" style="padding-left:40px;font-size:12px;opacity:.7">↳ LLM 记忆召回</a>
+    <a class="nav-item" href="context.html#ctx-sysprompt" style="padding-left:40px;font-size:12px;opacity:.7">↳ System Prompt</a>
+    <a class="nav-item" href="context.html#ctx-decisions" style="padding-left:40px;font-size:12px;opacity:.7">↳ 设计决策表</a>
+    <a class="nav-item" href="ui-components.html#ui">🎨 UI 渲染</a>
+    <a class="nav-item" href="ui-components.html#ui-compiler" style="padding-left:40px;font-size:12px;opacity:.7">↳ React Compiler</a>
+    <a class="nav-item" href="ui-components.html#ui-messages" style="padding-left:40px;font-size:12px;opacity:.7">↳ 消息管线</a>
+    <a class="nav-item" href="ui-components.html#ui-virtual" style="padding-left:40px;font-size:12px;opacity:.7">↳ 虚拟滚动</a>
+    <a class="nav-item" href="ui-components.html#ui-fullscreen" style="padding-left:40px;font-size:12px;opacity:.7">↳ 全屏布局</a>
+    <a class="nav-item" href="ui-components.html#ui-perf" style="padding-left:40px;font-size:12px;opacity:.7">↳ 性能工程</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">基础设施</div>
+    <a class="nav-item" href="utils-infra.html#infra">🔩 基础设施</a>
+    <a class="nav-item" href="utils-infra.html#infra-session" style="padding-left:40px;font-size:12px;opacity:.7">↳ 会话持久化</a>
+    <a class="nav-item" href="utils-infra.html#infra-messages" style="padding-left:40px;font-size:12px;opacity:.7">↳ 消息系统</a>
+    <a class="nav-item" href="utils-infra.html#infra-hooks" style="padding-left:40px;font-size:12px;opacity:.7">↳ Hook 引擎</a>
+    <a class="nav-item" href="utils-infra.html#infra-config" style="padding-left:40px;font-size:12px;opacity:.7">↳ 配置与认证</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">React Hooks</div>
+    <a class="nav-item" href="hooks-system.html#hooks">🪝 React Hooks</a>
+    <a class="nav-item" href="hooks-system.html#hooks-input" style="padding-left:40px;font-size:12px;opacity:.7">↳ 输入管线</a>
+    <a class="nav-item" href="hooks-system.html#hooks-virtual" style="padding-left:40px;font-size:12px;opacity:.7">↳ 虚拟滚动</a>
+    <a class="nav-item" href="hooks-system.html#hooks-voice" style="padding-left:40px;font-size:12px;opacity:.7">↳ 语音子系统</a>
+    <a class="nav-item" href="hooks-system.html#hooks-collab" style="padding-left:40px;font-size:12px;opacity:.7">↳ 协作通信</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">渲染引擎</div>
+    <a class="nav-item" href="ink-engine.html#ink">🖼️ Ink 渲染引擎</a>
+    <a class="nav-item" href="ink-engine.html#ink-dom" style="padding-left:40px;font-size:12px;opacity:.7">↳ 自定义 DOM</a>
+    <a class="nav-item" href="ink-engine.html#ink-pipeline" style="padding-left:40px;font-size:12px;opacity:.7">↳ 渲染管线</a>
+    <a class="nav-item" href="ink-engine.html#ink-screen" style="padding-left:40px;font-size:12px;opacity:.7">↳ 屏幕缓冲区</a>
+    <a class="nav-item" href="ink-engine.html#ink-interact" style="padding-left:40px;font-size:12px;opacity:.7">↳ 全屏交互</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">插件系统</div>
+    <a class="nav-item" href="advanced.html#plugins">🔌 插件系统</a>
+    <a class="nav-item" href="advanced.html#plugins-loader" style="padding-left:40px;font-size:12px;opacity:.7">↳ 发现与加载</a>
+    <a class="nav-item" href="advanced.html#plugins-marketplace" style="padding-left:40px;font-size:12px;opacity:.7">↳ Marketplace</a>
+    <a class="nav-item" href="advanced.html#plugins-schema" style="padding-left:40px;font-size:12px;opacity:.7">↳ Schema 安全</a>
+    <a class="nav-item" href="advanced.html#plugins-lifecycle" style="padding-left:40px;font-size:12px;opacity:.7">↳ 验证生命周期</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">Bridge 通信</div>
+    <a class="nav-item" href="bridge.html#bridge">🌉 Bridge 通信</a>
+    <a class="nav-item" href="bridge.html#bridge-api" style="padding-left:40px;font-size:12px;opacity:.7">↳ 环境与轮询</a>
+    <a class="nav-item" href="bridge.html#bridge-repl" style="padding-left:40px;font-size:12px;opacity:.7">↳ REPL Bridge</a>
+    <a class="nav-item" href="bridge.html#bridge-messaging" style="padding-left:40px;font-size:12px;opacity:.7">↳ 消息路由</a>
+    <a class="nav-item" href="bridge.html#bridge-transport" style="padding-left:40px;font-size:12px;opacity:.7">↳ 传输与安全</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">核心服务层</div>
+    <a class="nav-item" href="services-deep.html#services">🔗 核心服务层</a>
+    <a class="nav-item" href="services-deep.html#svc-api" style="padding-left:40px;font-size:12px;opacity:.7">↳ API 通信核心</a>
+    <a class="nav-item" href="services-deep.html#svc-retry" style="padding-left:40px;font-size:12px;opacity:.7">↳ 重试引擎</a>
+    <a class="nav-item" href="services-deep.html#svc-errors" style="padding-left:40px;font-size:12px;opacity:.7">↳ 错误分类</a>
+    <a class="nav-item" href="services-deep.html#svc-mcp" style="padding-left:40px;font-size:12px;opacity:.7">↳ MCP 客户端</a>
+    <a class="nav-item" href="services-deep.html#svc-compact" style="padding-left:40px;font-size:12px;opacity:.7">↳ 上下文压缩</a>
+    <a class="nav-item" href="services-deep.html#svc-cache" style="padding-left:40px;font-size:12px;opacity:.7">↳ 缓存检测</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">工具系统</div>
+    <a class="nav-item" href="tools-deep.html#tools-system">🛠️ 工具系统</a>
+    <a class="nav-item" href="tools-deep.html#tools-bash" style="padding-left:40px;font-size:12px;opacity:.7">↳ BashTool 深剖</a>
+    <a class="nav-item" href="tools-deep.html#tools-panorama" style="padding-left:40px;font-size:12px;opacity:.7">↳ 38 工具全景</a>
+    <a class="nav-item" href="tools-deep.html#tools-client" style="padding-left:40px;font-size:12px;opacity:.7">↳ 多云客户端</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">权限与安全</div>
+    <a class="nav-item" href="tools-deep.html#perm-engine">🛡️ 权限决策引擎</a>
+    <a class="nav-item" href="tools-deep.html#perm-pipeline" style="padding-left:40px;font-size:12px;opacity:.7">↳ 决策管线</a>
+    <a class="nav-item" href="tools-deep.html#perm-yolo" style="padding-left:40px;font-size:12px;opacity:.7">↳ Auto Mode 分类器</a>
+    <a class="nav-item" href="tools-deep.html#perm-modes" style="padding-left:40px;font-size:12px;opacity:.7">↳ 权限模式</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">常量与命令</div>
+    <a class="nav-item" href="config-cmd.html#config-cmd">📜 常量与命令</a>
+    <a class="nav-item" href="config-cmd.html#config-constants" style="padding-left:40px;font-size:12px;opacity:.7">↳ 常量系统</a>
+    <a class="nav-item" href="config-cmd.html#config-commands" style="padding-left:40px;font-size:12px;opacity:.7">↳ 命令系统</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">Agent 与状态</div>
+    <a class="nav-item" href="agent-coord.html#agent-coord">🤖 Agent 协调层</a>
+    <a class="nav-item" href="agent-coord.html#agent-lifecycle" style="padding-left:40px;font-size:12px;opacity:.7">↳ 生命周期</a>
+    <a class="nav-item" href="agent-coord.html#agent-modes" style="padding-left:40px;font-size:12px;opacity:.7">↳ 多智能体模式</a>
+    <a class="nav-item" href="subsystems.html#state-ctx">📊 状态与上下文</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">CLI 与运行时</div>
+    <a class="nav-item" href="cli-transport.html#cli-transport">🖥️ CLI 与传输层</a>
+    <a class="nav-item" href="analytics-ff.html#analytics-ff">📈 分析与特性开关</a>
+    <a class="nav-item" href="model-shell.html#model-shell">🔧 模型与 Shell</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">类型与任务</div>
+    <a class="nav-item" href="types-tasks.html#type-system">📝 类型系统</a>
+    <a class="nav-item" href="types-tasks.html#task-migration">⚙️ 任务与迁移</a>
+  </div>
+
+</nav>
+<main class="main" id="mainContent">
+
+<section class="section" id="context">
+<h2 class="section-title"><span class="icon">🧠</span> 上下文管理 <span class="num">16</span></h2>
+
+<p>上下文管理是 Claude Code 架构中<strong>最关键但最容易被误解</strong>的模块。它解决一个根本问题：LLM 是无状态的，每次 API 调用都从零开始——于是必须在每次请求中精心构建 System Prompt，把"AI 应该知道的一切"塞进有限的 Token 窗口。</p>
+
+<div class="tip tip-key">
+  <strong>🔑 本章方法论：</strong>以下所有架构声明均源自 Harness 穷举分析——先扫描 1884 个 TS 文件的全局模式（buildTool/sideQuery/memoize/feature flag），再逐文件深入。每个声明标注源码位置。
+</div>
+
+<!-- ===== 16.1 搜索策略 ===== -->
+<h3 id="ctx-search">16.1 搜索策略：为什么用 Grep 而不用 RAG</h3>
+
+<p>这是整个架构中<strong>最重要的设计决策之一</strong>，但从外部文档中完全看不出来：Claude Code 的代码搜索完全基于 <strong>ripgrep（正则匹配）</strong>，不使用任何向量数据库、Embedding 模型或 RAG 管线。</p>
+
+<div class="tip tip-warn">
+  <strong>⚠️ 穷举证据：</strong>在 1884 个 TypeScript 源文件中搜索 <code>embedding</code>、<code>vector.*db</code>、<code>cosine.*simil</code>、<code>faiss</code>、<code>chroma</code>、<code>pinecone</code>，结果为 <strong>0</strong> 条。这不是疏忽——这是深思熟虑的架构选择。
+</div>
+
+<table>
+  <tr><th>维度</th><th>Claude Code 的选择</th><th>典型 RAG 方案</th></tr>
+  <tr><td><strong>搜索引擎</strong></td><td>ripgrep（正则匹配）</td><td>向量数据库 + embedding</td></tr>
+  <tr><td><strong>索引</strong></td><td><strong>无索引</strong>，每次实时扫描文件系统</td><td>需要预先构建向量索引</td></tr>
+  <tr><td><strong>结果</strong></td><td>确定性的，精确匹配</td><td>语义相似度，可能有误召回</td></tr>
+  <tr><td><strong>基础设施</strong></td><td>零依赖（rg 编译进二进制）</td><td>需运行 Chroma/Pinecone 等</td></tr>
+  <tr><td><strong>延迟</strong></td><td>20K 文件 &lt; 100ms</td><td>索引构建可达数分钟</td></tr>
+  <tr><td><strong>一致性</strong></td><td>永远反映文件系统当前状态</td><td>有索引过期问题</td></tr>
+  <tr><td><strong>成本</strong></td><td>完全免费（本地 CPU）</td><td>每个文件需 API 调用生成向量</td></tr>
+</table>
+
+<h4>ripgrep 的三种部署模式</h4>
+<p>Claude Code 通过 <code>utils/ripgrep.ts</code>（680行）的 <code>getRipgrepConfig()</code> 函数，实现了 ripgrep 在不同环境下的无缝部署：</p>
+
+<div class="collapsible">
+  <div class="collapsible-header" onclick="toggleCollapsible(this)"><span class="arrow">▶</span> ripgrep 部署模式选择逻辑 <span class="tag tag-purple">ripgrep.ts:31-65</span></div>
+  <div class="collapsible-body"><pre><code class="language-typescript">// 三种模式的优先级：用户请求 system &gt; embedded &gt; builtin
+const getRipgrepConfig = memoize((): RipgrepConfig =&gt; {
+  // 模式 1: system — 用户系统安装的 rg
+  if (userWantsSystemRipgrep) {
+    const { cmd: systemPath } = findExecutable('rg', [])
+    if (systemPath !== 'rg') {
+      return { mode: 'system', command: 'rg', args: [] }
+    }
+  }
+  // 模式 2: embedded — 静态编译进 bun 二进制
+  // 通过 argv0='rg' 让同一个 bun 进程以 ripgrep 身份运行
+  if (isInBundledMode()) {
+    return {
+      mode: 'embedded',
+      command: process.execPath, // bun 自身
+      args: ['--no-config'],
+      argv0: 'rg', // 魔法：用 argv[0] 切换执行模式
+    }
+  }
+  // 模式 3: builtin — vendor 目录中的预编译二进制
+  const command = path.resolve(rgRoot,
+    `${process.arch}-${process.platform}`, 'rg')
+  return { mode: 'builtin', command, args: [] }
+})</code></pre></div>
+</div>
+
+<h4>GrepTool：封装后的搜索工具</h4>
+<p><code>tools/GrepTool/GrepTool.ts</code>（578行）将 ripgrep 封装为 AI 可调用的工具。System Prompt 中<strong>明确强制 AI 使用 GrepTool</strong>：</p>
+
+<div class="collapsible">
+  <div class="collapsible-header" onclick="toggleCollapsible(this)"><span class="arrow">▶</span> System Prompt 中的搜索指令 <span class="tag tag-orange">prompts.ts:298-299</span></div>
+  <div class="collapsible-body"><pre><code class="language-typescript">// 构建 "# Using your tools" 段落时注入的规则：
+const providedToolSubitems = [
+  `To search for files use ${GLOB_TOOL_NAME} instead of find or ls`,
+  `To search the content of files, use ${GREP_TOOL_NAME} instead of grep or rg`,
+  `Reserve using the ${BASH_TOOL_NAME} exclusively for system commands...`,
+]
+// 意义：AI 被指示"用 Grep 工具"而不是"在 Bash 中运行 grep"
+// 因为 Grep 工具内置了权限检查、ignore 模式、结果限制等安全措施</code></pre></div>
+</div>
+
+<h4>FileIndex：文件名补全的 Fuzzy Matcher</h4>
+<p><code>native-ts/file-index/index.ts</code>（371行）实现文件名模糊匹配（用于 <code>@</code> 提及补全），是从 Rust 的 nucleo 移植的纯 TypeScript 版本。<strong>这是字符级模糊匹配，不是语义搜索</strong>：</p>
+
+<div class="collapsible">
+  <div class="collapsible-header" onclick="toggleCollapsible(this)"><span class="arrow">▶</span> FileIndex 核心评分算法 <span class="tag tag-cyan">file-index/index.ts:208-271</span></div>
+  <div class="collapsible-body"><pre><code class="language-typescript">// 核心搜索循环：字符级位图排除 + indexOf 扫描
+outer: for (let i = 0; i &lt; readyCount; i++) {
+  // O(1) 位图排除：路径必须包含 needle 中的每个字母
+  if ((charBits[i]! &amp; needleBitmap) !== needleBitmap) continue
+  // indexOf 扫描：找到每个 needle 字符的位置
+  let pos = haystack.indexOf(needleChars[0]!)
+  if (pos === -1) continue
+  // 评分：SCORE_MATCH(16) + BONUS_BOUNDARY(8) + BONUS_CAMEL(6) + BONUS_CONSECUTIVE(4)
+  // 对含 "test" 的路径施加 1.05x 惩罚，让非测试文件排名更高
+}
+// 注意：完全没有 embedding、向量、语义——纯字符匹配</code></pre></div>
+</div>
+
+<div class="tip tip-key">
+  <strong>🔑 设计哲学——"AI 做决策，传统工具做执行"：</strong>不是让 AI 做模糊匹配（AI 弱项是精确搜索），而是让 AI 决定<strong>搜什么参数</strong>（grep pattern），让 ripgrep 做精确搜索。这是 Claude Code 区别于 Cursor/Cody（依赖 RAG）的核心架构理念。
+</div>
+
+<!-- ===== 16.2 记忆体系 ===== -->
+<h3 id="ctx-memory">16.2 记忆文件体系：6 层优先级</h3>
+
+<p>Claude Code 的记忆文件不是简单的 4 个 CLAUDE.md——而是一个 <strong>6 层体系</strong>，有严格的加载顺序和覆盖规则。</p>
+
+<table>
+  <tr><th>优先级</th><th>层级</th><th>路径</th><th>谁管理</th><th>典型内容</th></tr>
+  <tr><td>1 最高</td><td><span class="tag tag-red">Managed</span></td><td><code>~/.claude/settings.json &rarr; instructions</code></td><td>组织管理员</td><td>企业策略、合规规则</td></tr>
+  <tr><td>2</td><td><span class="tag tag-purple">User</span></td><td><code>~/.claude/CLAUDE.md</code></td><td>用户</td><td>全局编码偏好</td></tr>
+  <tr><td>3</td><td><span class="tag tag-blue">Project</span></td><td><code>{项目}/.claude/CLAUDE.md</code> 或 <code>{项目}/CLAUDE.md</code></td><td>团队</td><td>项目规范、架构约定</td></tr>
+  <tr><td>4</td><td><span class="tag tag-green">Local</span></td><td><code>{项目}/.claude/CLAUDE.local.md</code></td><td>用户</td><td>本地偏好（不提交 Git）</td></tr>
+  <tr><td>5</td><td><span class="tag tag-orange">AutoMem</span></td><td><code>~/.claude/memory/*.md</code></td><td>AI 自动</td><td>AI 从对话中提取的持久记忆</td></tr>
+  <tr><td>6</td><td><span class="tag tag-cyan">TeamMem</span></td><td><code>{项目}/.claude/team-memory/*.md</code></td><td>团队共享</td><td>团队级共享知识</td></tr>
+</table>
+
+<h4>目录发现：上行遍历机制</h4>
+<p><code>utils/claudemd.ts</code>（1480行）的 <code>getMemoryFiles()</code> 函数从 CWD 开始，<strong>向上遍历到 Git 仓库根目录</strong>（或文件系统根），在每一层检查是否存在 CLAUDE.md 文件。遇到 Git Worktree 时有去重逻辑。</p>
+
+<div class="mermaid">
+flowchart TD
+    A["getMemoryFiles() 入口"] --> B["读取 Managed 层"]
+    B --> C["读取 User 层"]
+    C --> D["从 CWD 向上遍历到 Git Root"]
+    D --> E{"每层目录检查"}
+    E -->|"存在 .claude/CLAUDE.md"| F["读取 Project 层"]
+    E -->|"存在 CLAUDE.md"| F
+    E -->|"存在 .claude/CLAUDE.local.md"| G["读取 Local 层"]
+    E -->|"不存在"| H["继续上行"]
+    F --> I["合并去重"]
+    G --> I
+    H -->|"到达 Git Root"| I
+    I --> J["按优先级排序返回"]
+</div>
+
+<h4>@include 递归指令</h4>
+<p>CLAUDE.md 文件支持 <code>@include</code> 指令来引入其他文件。这不是简单的正则替换——而是使用 <code>marked</code> 库做 <strong>AST 级别的 Markdown 解析</strong>：</p>
+
+<div class="collapsible">
+  <div class="collapsible-header" onclick="toggleCollapsible(this)"><span class="arrow">▶</span> @include 解析核心逻辑 <span class="tag tag-purple">claudemd.ts:processMemoryFile</span></div>
+  <div class="collapsible-body"><pre><code class="language-typescript">// 关键参数：
+const MAX_INCLUDE_DEPTH = 5     // 最大递归深度
+const MAX_MEMORY_CHARACTER_COUNT = 40_000  // 最大字符数
+
+// 步骤：
+// 1. 用 marked.lexer() 解析 Markdown 为 AST Token
+// 2. 遍历所有 paragraph token，匹配 @path/to/file 模式
+// 3. 解析路径: 支持相对路径、绝对路径、symlink
+// 4. 循环引用检测: 维护 visited Set，防止 A -&gt; B -&gt; A 死循环
+// 5. 递归处理被 include 的文件（depth + 1）
+// 6. 如果 depth &gt; MAX_INCLUDE_DEPTH，静默忽略</code></pre></div>
+</div>
+
+<h4>条件规则：frontmatter paths</h4>
+<p>CLAUDE.md 文件可以在 YAML frontmatter 中指定 <code>paths</code> 字段，使规则<strong>仅在 AI 操作匹配路径时生效</strong>：</p>
+
+<div class="collapsible">
+  <div class="collapsible-header" onclick="toggleCollapsible(this)"><span class="arrow">▶</span> 条件规则示例 <span class="tag tag-green">frontmatterParser.ts</span></div>
+  <div class="collapsible-body"><pre><code class="language-typescript">// 示例 CLAUDE.md（仅在操作 Java 文件时注入此规则）：
+// ---
+// paths:
+//   - "src/**/*.java"
+//   - "!**/test/**"
+// ---
+// 所有 Java 类必须使用 Lombok @RequiredArgsConstructor
+
+// frontmatterParser.ts 的处理：
+// 1. 用 parseFrontmatter() 解析 YAML
+// 2. 展开 brace expansion: "*.{ts,tsx}" -&gt; ["*.ts", "*.tsx"]
+// 3. 用 micromatch-like glob 匹配当前操作的文件路径
+// 4. 匹配则注入规则，不匹配则跳过</code></pre></div>
+</div>
+
+<!-- ===== 16.3 记忆召回 ===== -->
+<h3 id="ctx-recall">16.3 记忆召回：LLM-as-Selector（非向量检索）</h3>
+
+<p>当 AI 需要从 <code>~/.claude/memory/</code> 目录中选择相关记忆时，Claude Code 不使用 embedding 向量相似度——而是<strong>让 Sonnet 模型直接阅读文件名清单后做选择</strong>。</p>
+
+<div class="flow-step"><div class="step-num">1</div><code>scanMemoryFiles()</code>：<code>readdir</code> 扫描目录，读取每个 .md 文件的前 30 行 frontmatter <span class="tag tag-cyan">memoryScan.ts:35-77</span></div>
+<div class="flow-arrow">&darr;</div>
+<div class="flow-step"><div class="step-num">2</div><code>formatMemoryManifest()</code>：生成文本清单「<code>[type] filename (timestamp): description</code>」</div>
+<div class="flow-arrow">&darr;</div>
+<div class="flow-step"><div class="step-num">3</div><code>sideQuery(Sonnet)</code>：发送旁查询，让 Sonnet 从清单中选择最多 5 个最相关的记忆文件</div>
+<div class="flow-arrow">&darr;</div>
+<div class="flow-step"><div class="step-num">4</div>返回选中的文件路径 + mtime，主模型按需读取内容</div>
+
+<div class="collapsible">
+  <div class="collapsible-header" onclick="toggleCollapsible(this)"><span class="arrow">▶</span> Sonnet 记忆选择器的 sideQuery 调用 <span class="tag tag-orange">findRelevantMemories.ts:98-122</span></div>
+  <div class="collapsible-body"><pre><code class="language-typescript">// 关键: 用 Sonnet 做选择器，不是 embedding 向量检索
+const result = await sideQuery({
+  model: getDefaultSonnetModel(),          // Sonnet 模型
+  system: SELECT_MEMORIES_SYSTEM_PROMPT,    // "You are selecting memories..."
+  messages: [{
+    role: 'user',
+    content: `Query: ${query}\n\nAvailable memories:\n${manifest}${toolsSection}`,
+  }],
+  max_tokens: 256,
+  output_format: {
+    type: 'json_schema',
+    schema: {
+      type: 'object',
+      properties: {
+        selected_memories: { type: 'array', items: { type: 'string' } },
+      },
+      required: ['selected_memories'],
+      additionalProperties: false,
+    },
+  },
+  signal,
+  querySource: 'memdir_relevance',
+})
+// 优势: 比 embedding 更灵活——能理解"这是 Java 项目，不要选 Python 记忆"
+// 约束: MAX_MEMORY_FILES = 200（超过时按 mtime 截断）</code></pre></div>
+</div>
+
+<h4>sideQuery：AI 的"内部小助手"</h4>
+<p><code>sideQuery</code> 不仅用于记忆召回。Harness 扫描发现它在代码库中有 <strong>8 个调用点</strong>，每个都是"用小模型辅助大模型"的模式：</p>
+
+<table>
+  <tr><th>调用点</th><th>模型</th><th>用途</th><th>源码位置</th></tr>
+  <tr><td>记忆召回</td><td>Sonnet</td><td>从文件清单中选择相关记忆</td><td><code>memdir/findRelevantMemories.ts:98</code></td></tr>
+  <tr><td>权限分类 Stage1</td><td>-</td><td>判断 bash 命令是否安全</td><td><code>permissions/yoloClassifier.ts:795</code></td></tr>
+  <tr><td>权限分类 Stage2</td><td>-</td><td>二次权限判断</td><td><code>permissions/yoloClassifier.ts:881</code></td></tr>
+  <tr><td>权限解释</td><td>-</td><td>向用户解释为什么需要权限</td><td><code>permissions/permissionExplainer.ts:178</code></td></tr>
+  <tr><td>会话搜索</td><td>-</td><td>搜索历史对话</td><td><code>utils/agenticSessionSearch.ts:264</code></td></tr>
+  <tr><td>Chrome MCP</td><td>-</td><td>浏览器集成处理</td><td><code>utils/claudeInChrome/mcpServer.ts:189</code></td></tr>
+  <tr><td>模型验证</td><td>-</td><td>测试 API key 是否有效</td><td><code>utils/model/validateModel.ts:57</code></td></tr>
+  <tr><td>Auto Mode</td><td>-</td><td>自动化模式决策</td><td><code>cli/handlers/autoMode.ts:115</code></td></tr>
+</table>
+
+<!-- ===== 16.4 System Prompt 构建 ===== -->
+<h3 id="ctx-sysprompt">16.4 System Prompt 构建：12 段 Section 注册</h3>
+
+<p>System Prompt 不是一段固定文本，而是 <code>constants/prompts.ts</code>（915行）通过 <strong>Section 注册机制</strong>动态组装的。每个 Section 独立计算、独立缓存。</p>
+
+<div class="collapsible">
+  <div class="collapsible-header" onclick="toggleCollapsible(this)"><span class="arrow">▶</span> System Prompt 的 Section 注册表 <span class="tag tag-purple">prompts.ts:491-555</span></div>
+  <div class="collapsible-body"><pre><code class="language-typescript">// ── 静态段（可跨用户缓存）──
+getSimpleIntroSection()       // "You are an interactive agent..."
+getSimpleSystemSection()      // 系统规则 + 工具结果处理
+getSimpleDoingTasksSection()  // 编码行为准则（最低复杂度原则）
+getActionsSection()           // 危险操作处理（可逆性评估）
+getUsingYourToolsSection()    // "用 Grep 不用 grep，用 Glob 不用 find"
+getSimpleToneAndStyleSection()// 风格（不用 emoji、简洁）
+getOutputEfficiencySection()  // "先说结论不说推理"
+
+// ═════ DYNAMIC_BOUNDARY ═════ &larr; 缓存分界线
+
+// ── 动态段（会话级，不跨用户缓存）──
+systemPromptSection('session_guidance')    // Agent/搜索策略指导
+systemPromptSection('memory')              // loadMemoryPrompt()
+systemPromptSection('env_info_simple')     // CWD/Git/OS/Model 信息
+systemPromptSection('language')            // 用户语言偏好
+systemPromptSection('output_style')        // 输出风格配置
+DANGEROUS_uncachedSystemPromptSection('mcp_instructions') // MCP 服务指令
+systemPromptSection('scratchpad')          // Scratchpad 目录指令
+systemPromptSection('frc')                 // Function Result Clearing
+systemPromptSection('summarize_tool_results')  // 工具结果摘要
+systemPromptSection('numeric_length_anchors')  // 输出长度锚定
+systemPromptSection('token_budget')        // Token 预算指令
+systemPromptSection('brief')               // Brief 模式</code></pre></div>
+</div>
+
+<h4>Prompt Cache 分层：DYNAMIC_BOUNDARY</h4>
+<p>System Prompt 被一个标记 <code>SYSTEM_PROMPT_DYNAMIC_BOUNDARY</code> 分为两段：</p>
+
+<table>
+  <tr><th>段</th><th>缓存策略</th><th>内容</th><th>变化频率</th></tr>
+  <tr><td><strong>静态段</strong>（BOUNDARY 之前）</td><td><code>cacheScope: 'global'</code></td><td>行为准则、工具使用指导、风格要求</td><td>几乎不变（跨用户复用）</td></tr>
+  <tr><td><strong>动态段</strong>（BOUNDARY 之后）</td><td>每次重新计算</td><td>记忆文件、环境信息、MCP 指令</td><td>每次会话不同</td></tr>
+</table>
+
+<div class="tip tip-info">
+  <strong>💡 缓存分离的意义：</strong>Anthropic 的 Prompt Cache 按<strong>前缀匹配</strong>——如果 System Prompt 开头不变，后续即使变了也能复用缓存。通过 DYNAMIC_BOUNDARY 把"不变的"放前面、"变的"放后面，最大化缓存命中率，节省 API 成本。
+</div>
+
+<!-- ===== 16.5 嵌套记忆注入 ===== -->
+<h3 id="ctx-nested">16.5 嵌套记忆注入：FileReadTool 触发的 4 阶段流程</h3>
+
+<p>当 AI 使用 <code>FileReadTool</code> 读取某个文件时，<code>utils/attachments.ts</code>（3998行）会<strong>自动注入该路径上所有的记忆文件</strong>——这是 monorepo 中自动发现子项目规则的核心机制。</p>
+
+<div class="flow-step"><div class="step-num">1</div><strong>Managed/User 条件规则</strong>：检查全局级记忆文件中是否有匹配当前路径的 frontmatter paths 规则</div>
+<div class="flow-arrow">&darr;</div>
+<div class="flow-step"><div class="step-num">2</div><strong>嵌套目录遍历</strong>：从 CWD 到目标文件路径之间的每层目录，检查是否有 CLAUDE.md</div>
+<div class="flow-arrow">&darr;</div>
+<div class="flow-step"><div class="step-num">3</div><strong>CWD 目录规则</strong>：检查当前工作目录中的条件规则是否匹配</div>
+<div class="flow-arrow">&darr;</div>
+<div class="flow-step"><div class="step-num">4</div><strong>注入为 Attachment</strong>：将找到的记忆文件内容作为消息附件注入后续对话</div>
+
+<!-- ===== 16.6 memoize 缓存 ===== -->
+<h3 id="ctx-cache">16.6 缓存策略：65+ 个 Memoize 点</h3>
+
+<p>Claude Code 使用 <code>lodash-es/memoize</code> 做单进程缓存。Harness 扫描发现代码库中有 <strong>65+ 个 memoize 调用点</strong>，与上下文直接相关的有：</p>
+
+<table>
+  <tr><th>缓存目标</th><th>缓存键</th><th>失效条件</th><th>源码位置</th></tr>
+  <tr><td><code>getSystemContext()</code></td><td>无参数</td><td>Compaction 后手动清除</td><td><code>context.ts:116</code></td></tr>
+  <tr><td><code>getUserContext()</code></td><td>无参数</td><td>Compaction 后手动清除</td><td><code>context.ts:155</code></td></tr>
+  <tr><td><code>getMemoryFiles()</code></td><td>无参数</td><td>Compaction / Worktree 切换</td><td><code>utils/claudemd.ts</code></td></tr>
+  <tr><td><code>getRipgrepConfig()</code></td><td>无参数</td><td>永不失效（进程级单例）</td><td><code>utils/ripgrep.ts:31</code></td></tr>
+  <tr><td><code>countFilesRoundedRg()</code></td><td>dirPath + ignorePatterns</td><td>永不失效</td><td><code>utils/ripgrep.ts:476</code></td></tr>
+  <tr><td><code>systemPromptSection()</code></td><td>section name</td><td>每轮对话重算</td><td><code>constants/systemPromptSections.ts</code></td></tr>
+</table>
+
+<!-- ===== 16.7 竞品感知 ===== -->
+<h3 id="ctx-indexing">16.7 竞品索引感知（遥测）</h3>
+
+<p><code>utils/codeIndexing.ts</code>（207行）追踪用户是否在通过 Bash 或 MCP 使用外部代码索引工具。这<strong>不是搜索引擎</strong>——纯用于遥测分析，了解用户行为：</p>
+
+<div class="collapsible">
+  <div class="collapsible-header" onclick="toggleCollapsible(this)"><span class="arrow">▶</span> 被追踪的竞品工具列表 <span class="tag tag-cyan">codeIndexing.ts:12-42</span></div>
+  <div class="collapsible-body"><pre><code class="language-typescript">export type CodeIndexingTool =
+  // 代码搜索引擎
+  | 'sourcegraph' | 'hound' | 'seagoat' | 'bloop' | 'gitloop'
+  // AI 编程助手（含索引能力）
+  | 'cody' | 'aider' | 'continue' | 'github-copilot'
+  | 'cursor' | 'tabby' | 'codeium' | 'tabnine'
+  | 'augment' | 'windsurf' | 'aide' | 'pieces'
+  | 'qodo' | 'amazon-q' | 'gemini'
+  // MCP 代码索引服务器
+  | 'claude-context' | 'code-index-mcp' | 'local-code-search'
+  | 'autodev-codebase'
+  // 上下文提供者
+  | 'openctx'
+// 通过 CLI 命令名 或 MCP server 名称 匹配
+// 仅用于 logEvent('tengu_code_indexing_usage') 遥测上报</code></pre></div>
+</div>
+
+<!-- ===== 16.8 设计决策总结 ===== -->
+<h3 id="ctx-decisions">16.8 关键设计决策总结</h3>
+
+<table>
+  <tr><th>决策</th><th>选择</th><th>为什么不选替代方案</th></tr>
+  <tr><td>代码搜索引擎</td><td><span class="tag tag-green">ripgrep</span></td><td>RAG 需要基础设施、有索引过期问题、语义匹配不如精确匹配适合代码搜索</td></tr>
+  <tr><td>文件名补全</td><td><span class="tag tag-blue">nucleo fuzzy match</span></td><td>字符级匹配比语义搜索更符合程序员的 tab 补全习惯</td></tr>
+  <tr><td>记忆召回</td><td><span class="tag tag-purple">Sonnet sideQuery</span></td><td>比 embedding 更灵活（能理解项目上下文），200 个文件内 LLM 选择足够高效</td></tr>
+  <tr><td>记忆存储</td><td><span class="tag tag-orange">纯文本 .md 文件</span></td><td>比数据库更透明、可 Git 管理、用户可直接编辑</td></tr>
+  <tr><td>上下文缓存</td><td><span class="tag tag-cyan">lodash memoize</span></td><td>比 Redis 更轻量，CLI 工具不需要跨进程缓存</td></tr>
+  <tr><td>规则条件化</td><td><span class="tag tag-pink">frontmatter paths glob</span></td><td>比编程式配置更直觉，直接写在 .md 文件头部</td></tr>
+  <tr><td>Prompt Cache</td><td><span class="tag tag-red">DYNAMIC_BOUNDARY 分段</span></td><td>前缀不变则最大化 Anthropic Prompt Cache 命中率</td></tr>
+</table>
+
+<div class="tip tip-key">
+  <strong>🔑 一句话总结：</strong>Claude Code 的上下文管理哲学是<strong>"零基础设施 + AI 做决策 + 传统工具做执行"</strong>——不需要 Docker、不需要向量数据库、不需要预建索引。所有搜索都是实时文件系统扫描，所有记忆都是纯文本文件，所有"智能"选择都交给 LLM sideQuery。这符合 CLI 工具"安装即用"的产品定位。
+</div>
+
+</section>
+
+
+<!-- ==================== §17 UI ==================== -->
+
+
+</main>
+<button class="back-top" id="backTop" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button>
+<script src="js/main.js"></script>
+</body>
+</html>

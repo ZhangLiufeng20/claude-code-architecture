@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>入口与引导层 — Claude Code v2.1.88 架构深度解析</title>
+<meta name="description" content="Claude Code 入口引导层、初始化管线、MCP Server、Agent SDK 类型系统的源码级架构分析">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+<script type="module">
+import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+mermaid.initialize({startOnLoad:true,theme:"dark",themeVariables:{primaryColor:"#6d28d9",primaryTextColor:"#e2e8f0",primaryBorderColor:"#7c3aed",lineColor:"#7c3aed",secondaryColor:"#1e1b4b",tertiaryColor:"#0f172a"}});
+</script>
+<link rel="stylesheet" href="css/shared.css">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#05050a;--bg2:#0a0a16;--surface:rgba(20,20,38,.5);--surface2:rgba(35,35,65,.6);--border:rgba(255,255,255,.08);--border-hover:rgba(139,92,246,.5);--text:#f8fafc;--text2:#94a3b8;--text3:#64748b;--accent:#8b5cf6;--accent2:#6d28d9;--accent3:#c084fc;--green:#10b981;--blue:#3b82f6;--orange:#f59e0b;--red:#ef4444;--pink:#ec4899;--cyan:#06b6d4;--sidebar-w:280px;--header-h:64px}
+html{scroll-behavior:smooth;scroll-padding-top:80px}
+body{font-family:'Inter',system-ui,sans-serif;background-color:var(--bg);background-image:radial-gradient(circle at 15% 0%,rgba(139,92,246,.15) 0,transparent 30%),radial-gradient(circle at 85% 10%,rgba(6,182,212,.1) 0,transparent 30%);background-attachment:fixed;color:var(--text);line-height:1.7;overflow-x:hidden}
+::-webkit-scrollbar{width:6px}
+::-webkit-scrollbar-track{background:rgba(0,0,0,.2)}
+::-webkit-scrollbar-thumb{background:var(--surface2);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:var(--accent)}
+a{color:var(--accent3);text-decoration:none;transition:color .2s}
+a:hover{color:var(--cyan)}
+code{font-family:'JetBrains Mono',monospace}
+.header{position:fixed;top:0;left:0;right:0;height:var(--header-h);background:rgba(5,5,10,.6);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 24px;z-index:100;gap:16px}
+.header .logo{font-size:22px;font-weight:900;letter-spacing:-.5px;background:linear-gradient(135deg,#c084fc,#38bdf8,#818cf8);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.header .version{font-size:12px;padding:2px 10px;border-radius:99px;background:var(--surface);color:var(--accent3);border:1px solid var(--border);font-weight:600}
+.header .search-box{flex:1;max-width:400px;margin-left:auto}
+.header .search-box input{width:100%;padding:10px 16px;border-radius:12px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:14px;outline:none;transition:all .3s ease}
+.header .search-box input:focus{border-color:var(--accent);background:rgba(20,20,40,.8)}
+.menu-btn{display:none;background:none;border:none;color:var(--text);font-size:24px;cursor:pointer}
+.sidebar{position:fixed;left:0;top:var(--header-h);bottom:0;width:var(--sidebar-w);background:rgba(10,10,22,.6);backdrop-filter:blur(20px);border-right:1px solid var(--border);overflow-y:auto;padding:20px 0;z-index:90;transition:transform .3s}
+.sidebar .nav-group{margin-bottom:12px}
+.sidebar .nav-group-title{padding:10px 20px;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:rgba(255,255,255,.3)}
+.sidebar .nav-item{display:block;padding:8px 20px 8px 28px;font-size:13px;font-weight:500;color:var(--text2);transition:all .25s;border-left:3px solid transparent;cursor:pointer}
+.sidebar .nav-item:hover{color:#fff;background:linear-gradient(90deg,var(--surface),transparent)}
+.sidebar .nav-item.active{color:var(--accent3);border-left-color:var(--accent);background:linear-gradient(90deg,rgba(139,92,246,.1),transparent)}
+.main{margin-left:var(--sidebar-w);margin-top:var(--header-h);padding:40px 60px 80px;max-width:1040px}
+.section{margin-bottom:80px;animation:fadeIn .6s cubic-bezier(.16,1,.3,1)}
+@keyframes fadeIn{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:translateY(0)}}
+.section-title{font-size:32px;font-weight:900;letter-spacing:-.5px;margin-bottom:32px;padding-bottom:16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;position:relative}
+.section-title::after{content:'';position:absolute;left:0;bottom:-1px;height:1px;width:100px;background:linear-gradient(90deg,var(--accent),transparent)}
+.section-title .icon{font-size:32px;filter:drop-shadow(0 0 12px rgba(139,92,246,.4))}
+.section-title .num{font-size:13px;padding:4px 12px;border-radius:99px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;font-weight:700}
+h3{font-size:22px;font-weight:800;letter-spacing:-.3px;margin:36px 0 16px;background:linear-gradient(135deg,#fff,#cbd5e1);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+h4{font-size:16px;font-weight:700;margin:24px 0 10px;color:var(--accent3)}
+p{margin-bottom:16px;color:var(--text2);font-size:15px}
+ul,ol{margin:12px 0 20px 24px;color:var(--text2);font-size:15px}
+li{margin-bottom:6px}
+li::marker{color:var(--accent)}
+strong{color:#fff;font-weight:600}
+.card{background:var(--surface);backdrop-filter:blur(16px);border:1px solid var(--border);border-radius:16px;padding:24px;margin:20px 0;transition:all .4s;box-shadow:0 4px 20px rgba(0,0,0,.2),inset 0 1px 0 rgba(255,255,255,.05)}
+.card:hover{transform:translateY(-4px);border-color:var(--border-hover);box-shadow:0 12px 40px rgba(0,0,0,.4),0 0 20px rgba(139,92,246,.15)}
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin:24px 0}
+.stat-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:24px;text-align:center;transition:all .4s}
+.stat-card:hover{transform:translateY(-4px) scale(1.02);border-color:var(--border-hover)}
+.stat-card .value{font-size:36px;font-weight:900;letter-spacing:-1px;background:linear-gradient(135deg,#c084fc,#38bdf8);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.stat-card .label{font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--text3);margin-top:8px}
+table{width:100%;border-collapse:separate;border-spacing:0;margin:24px 0;font-size:14px;border-radius:12px;overflow:hidden;border:1px solid var(--border);background:var(--surface)}
+th{background:rgba(255,255,255,.03);padding:14px 18px;text-align:left;font-weight:700;color:var(--accent3);border-bottom:1px solid var(--border)}
+td{padding:14px 18px;border-bottom:1px solid var(--border);color:var(--text2)}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:rgba(255,255,255,.02)}
+pre[class*="language-"]{border-radius:12px!important;margin:16px 0!important;border:1px solid var(--border)!important;font-size:13px!important;background:#0d0d16!important}
+.collapsible{margin:16px 0;border-radius:12px;overflow:hidden;border:1px solid var(--border);background:var(--surface);transition:border-color .3s}
+.collapsible:hover{border-color:var(--border-hover)}
+.collapsible-header{display:flex;align-items:center;gap:12px;padding:14px 20px;cursor:pointer;font-size:14px;font-weight:700;color:#fff;transition:all .3s;user-select:none;background:rgba(255,255,255,.02)}
+.collapsible-header:hover{background:rgba(255,255,255,.05)}
+.collapsible-header .arrow{transition:transform .3s;font-size:12px;color:var(--text3)}
+.collapsible-header.open .arrow{transform:rotate(90deg);color:var(--accent3)}
+.collapsible-body{display:none;border-top:1px solid var(--border);background:#0d0d16}
+.collapsible-body.show{display:block;animation:slideDown .3s ease}
+@keyframes slideDown{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:translateY(0)}}
+.tag{display:inline-block;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:700;letter-spacing:.5px;margin:2px 4px 2px 0;text-transform:uppercase}
+.tag-purple{background:rgba(192,132,252,.15);color:#d8b4fe;border:1px solid rgba(192,132,252,.3)}
+.tag-green{background:rgba(16,185,129,.15);color:#6ee7b7;border:1px solid rgba(16,185,129,.3)}
+.tag-blue{background:rgba(59,130,246,.15);color:#93c5fd;border:1px solid rgba(59,130,246,.3)}
+.tag-orange{background:rgba(245,158,11,.15);color:#fcd34d;border:1px solid rgba(245,158,11,.3)}
+.tag-red{background:rgba(239,68,68,.15);color:#fca5a5;border:1px solid rgba(239,68,68,.3)}
+.tag-cyan{background:rgba(6,182,212,.15);color:#67e8f9;border:1px solid rgba(6,182,212,.3)}
+.mermaid{margin:24px 0;padding:24px;background:var(--surface);border:1px solid var(--border);border-radius:16px;overflow-x:auto;transition:border-color .3s}
+.mermaid:hover{border-color:rgba(139,92,246,.3)}
+.tip{padding:16px 20px;border-radius:12px;margin:20px 0;font-size:14.5px;border:1px solid var(--border);border-left:4px solid}
+.tip-info{background:rgba(59,130,246,.05);border-left-color:var(--blue);border-color:rgba(59,130,246,.2)}
+.tip-warn{background:rgba(245,158,11,.05);border-left-color:var(--orange);border-color:rgba(245,158,11,.2)}
+.tip-key{background:rgba(139,92,246,.05);border-left-color:var(--accent);border-color:rgba(139,92,246,.2)}
+.back-top{position:fixed;bottom:32px;right:32px;width:48px;height:48px;border-radius:50%;background:linear-gradient(135deg,var(--accent2),var(--accent));color:#fff;border:none;font-size:22px;cursor:pointer;display:none;align-items:center;justify-content:center;box-shadow:0 8px 24px rgba(109,40,217,.4);transition:all .3s;z-index:99}
+.back-top:hover{transform:translateY(-6px)}
+.back-top.show{display:flex}
+.flow-step{display:flex;align-items:center;gap:16px;margin:10px 0;padding:12px 20px;background:var(--surface);border:1px solid var(--border);border-radius:12px;font-size:14.5px;transition:transform .2s}
+.flow-step:hover{transform:translateX(4px);border-color:var(--border-hover)}
+.flow-step .step-num{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,var(--accent2),var(--accent));color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;flex-shrink:0}
+.flow-arrow{text-align:center;color:var(--accent3);font-size:20px;margin:6px 0;opacity:.7}
+:not(pre)>code{background:rgba(255,255,255,.05);padding:3px 8px;border-radius:6px;font-size:13px;color:#c084fc;border:1px solid rgba(255,255,255,.05)}
+.file-tree{font-family:'JetBrains Mono',monospace;font-size:13px;background:rgba(10,10,16,.8);border:1px solid var(--border);border-radius:12px;padding:20px;margin:16px 0;line-height:1.9}
+.file-tree .dir{color:var(--accent3);font-weight:600}
+.file-tree .file{color:var(--text2)}
+.file-tree .comment{color:var(--text3);font-style:italic}
+@media(max-width:900px){
+.sidebar{transform:translateX(-100%)}
+.sidebar.open{transform:translateX(0)}
+.main{margin-left:0;padding:24px 20px 80px}
+.menu-btn{display:block}
+:root{--sidebar-w:260px}
+.section-title{font-size:26px}
+.stats-grid{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+<header class="header">
+  <button class="menu-btn" onclick="document.querySelector('.sidebar').classList.toggle('open')">&#9776;</button>
+  <div class="logo"><a href="index.html">Claude Code 架构解析</a></div>
+  <span class="version">v2.1.88</span>
+  <div class="search-box"><input type="text" id="searchInput" placeholder="&#x1F50D; 搜索章节内容..." oninput="handleSearch(this.value)"></div>
+</header>
+<nav class="sidebar" id="sidebar">
+
+  <div class="nav-group">
+    <div class="nav-group-title">概览</div>
+    <a class="nav-item" href="index.html#overview">📋 项目概览</a>
+    <a class="nav-item" href="index.html#structure">📁 目录结构</a>
+    <a class="nav-item" href="index.html#arch">🏗️ 架构分层</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">核心引擎</div>
+    <a class="nav-item" href="core-engine.html#startup">🚀 启动流程</a>
+    <a class="nav-item" href="core-engine.html#tool-system">🔧 Tool 系统</a>
+    <a class="nav-item" href="core-engine.html#bash-security">🛡️ 安全沙箱</a>
+    <a class="nav-item" href="core-engine.html#query-loop">🔄 Query Loop</a>
+    <a class="nav-item" href="core-engine.html#query-engine">⚙️ QueryEngine</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">入口与引导</div>
+    <a class="nav-item" href="entrypoints.html#entrypoints">🚪 入口引导层</a>
+    <a class="nav-item" href="entrypoints.html#cli-bootstrap" style="padding-left:40px;font-size:12px;opacity:.7">↳ CLI Fast-Path</a>
+    <a class="nav-item" href="entrypoints.html#init-chain" style="padding-left:40px;font-size:12px;opacity:.7">↳ 初始化管线</a>
+    <a class="nav-item" href="entrypoints.html#mcp-server" style="padding-left:40px;font-size:12px;opacity:.7">↳ MCP Server</a>
+    <a class="nav-item" href="entrypoints.html#agent-sdk" style="padding-left:40px;font-size:12px;opacity:.7">↳ Agent SDK</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">子系统</div>
+    <a class="nav-item" href="subsystems.html#commands">💬 命令系统</a>
+    <a class="nav-item" href="subsystems.html#permissions">🔐 权限系统</a>
+    <a class="nav-item" href="subsystems.html#state">📦 状态管理</a>
+    <a class="nav-item" href="subsystems.html#api">🌐 API 通信</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">高级特性</div>
+    <a class="nav-item" href="advanced.html#coordinator">🤖 多Agent协调</a>
+    <a class="nav-item" href="advanced.html#mcp">🔌 MCP 集成</a>
+    <a class="nav-item" href="advanced.html#tasks">⚙️ 后台任务</a>
+    <a class="nav-item" href="advanced.html#plugins">📦 插件与技能</a>
+    <a class="nav-item" href="advanced.html#feature-flags">🚩 Feature Flags</a>
+    <a class="nav-item" href="context.html#context">🧠 上下文管理</a>
+    <a class="nav-item" href="context.html#ctx-search" style="padding-left:40px;font-size:12px;opacity:.7">↳ Grep vs RAG</a>
+    <a class="nav-item" href="context.html#ctx-memory" style="padding-left:40px;font-size:12px;opacity:.7">↳ 6层记忆体系</a>
+    <a class="nav-item" href="context.html#ctx-recall" style="padding-left:40px;font-size:12px;opacity:.7">↳ LLM 记忆召回</a>
+    <a class="nav-item" href="context.html#ctx-sysprompt" style="padding-left:40px;font-size:12px;opacity:.7">↳ System Prompt</a>
+    <a class="nav-item" href="context.html#ctx-decisions" style="padding-left:40px;font-size:12px;opacity:.7">↳ 设计决策表</a>
+    <a class="nav-item" href="ui-components.html#ui">🎨 UI 渲染</a>
+    <a class="nav-item" href="ui-components.html#ui-compiler" style="padding-left:40px;font-size:12px;opacity:.7">↳ React Compiler</a>
+    <a class="nav-item" href="ui-components.html#ui-messages" style="padding-left:40px;font-size:12px;opacity:.7">↳ 消息管线</a>
+    <a class="nav-item" href="ui-components.html#ui-virtual" style="padding-left:40px;font-size:12px;opacity:.7">↳ 虚拟滚动</a>
+    <a class="nav-item" href="ui-components.html#ui-fullscreen" style="padding-left:40px;font-size:12px;opacity:.7">↳ 全屏布局</a>
+    <a class="nav-item" href="ui-components.html#ui-perf" style="padding-left:40px;font-size:12px;opacity:.7">↳ 性能工程</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">基础设施</div>
+    <a class="nav-item" href="utils-infra.html#infra">🔩 基础设施</a>
+    <a class="nav-item" href="utils-infra.html#infra-session" style="padding-left:40px;font-size:12px;opacity:.7">↳ 会话持久化</a>
+    <a class="nav-item" href="utils-infra.html#infra-messages" style="padding-left:40px;font-size:12px;opacity:.7">↳ 消息系统</a>
+    <a class="nav-item" href="utils-infra.html#infra-hooks" style="padding-left:40px;font-size:12px;opacity:.7">↳ Hook 引擎</a>
+    <a class="nav-item" href="utils-infra.html#infra-config" style="padding-left:40px;font-size:12px;opacity:.7">↳ 配置与认证</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">React Hooks</div>
+    <a class="nav-item" href="hooks-system.html#hooks">🪝 React Hooks</a>
+    <a class="nav-item" href="hooks-system.html#hooks-input" style="padding-left:40px;font-size:12px;opacity:.7">↳ 输入管线</a>
+    <a class="nav-item" href="hooks-system.html#hooks-virtual" style="padding-left:40px;font-size:12px;opacity:.7">↳ 虚拟滚动</a>
+    <a class="nav-item" href="hooks-system.html#hooks-voice" style="padding-left:40px;font-size:12px;opacity:.7">↳ 语音子系统</a>
+    <a class="nav-item" href="hooks-system.html#hooks-collab" style="padding-left:40px;font-size:12px;opacity:.7">↳ 协作通信</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">渲染引擎</div>
+    <a class="nav-item" href="ink-engine.html#ink">🖼️ Ink 渲染引擎</a>
+    <a class="nav-item" href="ink-engine.html#ink-dom" style="padding-left:40px;font-size:12px;opacity:.7">↳ 自定义 DOM</a>
+    <a class="nav-item" href="ink-engine.html#ink-pipeline" style="padding-left:40px;font-size:12px;opacity:.7">↳ 渲染管线</a>
+    <a class="nav-item" href="ink-engine.html#ink-screen" style="padding-left:40px;font-size:12px;opacity:.7">↳ 屏幕缓冲区</a>
+    <a class="nav-item" href="ink-engine.html#ink-interact" style="padding-left:40px;font-size:12px;opacity:.7">↳ 全屏交互</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">插件系统</div>
+    <a class="nav-item" href="advanced.html#plugins">🔌 插件系统</a>
+    <a class="nav-item" href="advanced.html#plugins-loader" style="padding-left:40px;font-size:12px;opacity:.7">↳ 发现与加载</a>
+    <a class="nav-item" href="advanced.html#plugins-marketplace" style="padding-left:40px;font-size:12px;opacity:.7">↳ Marketplace</a>
+    <a class="nav-item" href="advanced.html#plugins-schema" style="padding-left:40px;font-size:12px;opacity:.7">↳ Schema 安全</a>
+    <a class="nav-item" href="advanced.html#plugins-lifecycle" style="padding-left:40px;font-size:12px;opacity:.7">↳ 验证生命周期</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">Bridge 通信</div>
+    <a class="nav-item" href="bridge.html#bridge">🌉 Bridge 通信</a>
+    <a class="nav-item" href="bridge.html#bridge-api" style="padding-left:40px;font-size:12px;opacity:.7">↳ 环境与轮询</a>
+    <a class="nav-item" href="bridge.html#bridge-repl" style="padding-left:40px;font-size:12px;opacity:.7">↳ REPL Bridge</a>
+    <a class="nav-item" href="bridge.html#bridge-messaging" style="padding-left:40px;font-size:12px;opacity:.7">↳ 消息路由</a>
+    <a class="nav-item" href="bridge.html#bridge-transport" style="padding-left:40px;font-size:12px;opacity:.7">↳ 传输与安全</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">核心服务层</div>
+    <a class="nav-item" href="services-deep.html#services">🔗 核心服务层</a>
+    <a class="nav-item" href="services-deep.html#svc-api" style="padding-left:40px;font-size:12px;opacity:.7">↳ API 通信核心</a>
+    <a class="nav-item" href="services-deep.html#svc-retry" style="padding-left:40px;font-size:12px;opacity:.7">↳ 重试引擎</a>
+    <a class="nav-item" href="services-deep.html#svc-errors" style="padding-left:40px;font-size:12px;opacity:.7">↳ 错误分类</a>
+    <a class="nav-item" href="services-deep.html#svc-mcp" style="padding-left:40px;font-size:12px;opacity:.7">↳ MCP 客户端</a>
+    <a class="nav-item" href="services-deep.html#svc-compact" style="padding-left:40px;font-size:12px;opacity:.7">↳ 上下文压缩</a>
+    <a class="nav-item" href="services-deep.html#svc-cache" style="padding-left:40px;font-size:12px;opacity:.7">↳ 缓存检测</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">工具系统</div>
+    <a class="nav-item" href="tools-deep.html#tools-system">🛠️ 工具系统</a>
+    <a class="nav-item" href="tools-deep.html#tools-bash" style="padding-left:40px;font-size:12px;opacity:.7">↳ BashTool 深剖</a>
+    <a class="nav-item" href="tools-deep.html#tools-panorama" style="padding-left:40px;font-size:12px;opacity:.7">↳ 38 工具全景</a>
+    <a class="nav-item" href="tools-deep.html#tools-client" style="padding-left:40px;font-size:12px;opacity:.7">↳ 多云客户端</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">权限与安全</div>
+    <a class="nav-item" href="tools-deep.html#perm-engine">🛡️ 权限决策引擎</a>
+    <a class="nav-item" href="tools-deep.html#perm-pipeline" style="padding-left:40px;font-size:12px;opacity:.7">↳ 决策管线</a>
+    <a class="nav-item" href="tools-deep.html#perm-yolo" style="padding-left:40px;font-size:12px;opacity:.7">↳ Auto Mode 分类器</a>
+    <a class="nav-item" href="tools-deep.html#perm-modes" style="padding-left:40px;font-size:12px;opacity:.7">↳ 权限模式</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">常量与命令</div>
+    <a class="nav-item" href="config-cmd.html#config-cmd">📜 常量与命令</a>
+    <a class="nav-item" href="config-cmd.html#config-constants" style="padding-left:40px;font-size:12px;opacity:.7">↳ 常量系统</a>
+    <a class="nav-item" href="config-cmd.html#config-commands" style="padding-left:40px;font-size:12px;opacity:.7">↳ 命令系统</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">Agent 与状态</div>
+    <a class="nav-item" href="agent-coord.html#agent-coord">🤖 Agent 协调层</a>
+    <a class="nav-item" href="agent-coord.html#agent-lifecycle" style="padding-left:40px;font-size:12px;opacity:.7">↳ 生命周期</a>
+    <a class="nav-item" href="agent-coord.html#agent-modes" style="padding-left:40px;font-size:12px;opacity:.7">↳ 多智能体模式</a>
+    <a class="nav-item" href="subsystems.html#state-ctx">📊 状态与上下文</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">CLI 与运行时</div>
+    <a class="nav-item" href="cli-transport.html#cli-transport">🖥️ CLI 与传输层</a>
+    <a class="nav-item" href="analytics-ff.html#analytics-ff">📈 分析与特性开关</a>
+    <a class="nav-item" href="model-shell.html#model-shell">🔧 模型与 Shell</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">类型与任务</div>
+    <a class="nav-item" href="types-tasks.html#type-system">📝 类型系统</a>
+    <a class="nav-item" href="types-tasks.html#task-migration">⚙️ 任务与迁移</a>
+  </div>
+
+</nav>
+<main class="main" id="mainContent">
+
+<!-- ==================== §30 ENTRYPOINTS ==================== -->
+<section class="section" id="entrypoints">
+<h2 class="section-title"><span class="icon">🚪</span> 入口与引导层 <span class="num">30</span></h2>
+
+<div class="tip tip-info">
+  <strong>🔬 方法论：</strong>本章对 <code>entrypoints/</code>（8 文件 / 80KB+）进行源码级深度分析。
+  核心文件：<code>cli.tsx</code>（303行/39KB）· <code>init.ts</code>（341行/14KB）· <code>mcp.ts</code>（197行/6KB）·
+  <code>agentSdkTypes.ts</code>（444行/13KB）· <code>sandboxTypes.ts</code>（157行/6KB）· <code>sdk/coreTypes.ts</code>（63行/1.5KB）。
+</div>
+
+<p><code>entrypoints/</code> 是 Claude Code 的 <strong>进程引导层</strong>——它定义了从用户敲下 <code>claude</code> 命令开始，到整个应用完全初始化之间的所有引导路径。
+  设计哲学是 <strong>"极致懒加载"</strong>：通过 Fast-Path 机制，让类似 <code>--version</code> 的命令在零 import 下完成。</p>
+
+<div class="stats-grid">
+  <div class="stat-card"><div class="value">8</div><div class="label">源文件数</div></div>
+  <div class="stat-card"><div class="value">80KB+</div><div class="label">总代码量</div></div>
+  <div class="stat-card"><div class="value">14+</div><div class="label">Fast Path 路由</div></div>
+  <div class="stat-card"><div class="value">303</div><div class="label">cli.tsx 行数</div></div>
+</div>
+
+<!-- ── 30.1 CLI 引导层 ── -->
+<h3 id="cli-bootstrap">30.1 CLI 引导层 (cli.tsx)</h3>
+
+<p><code>cli.tsx</code> 是 Claude Code 的 <strong>真正入口文件</strong>。它的设计核心是 <strong>Fast-Path 架构</strong>——在 <code>main()</code> 函数中，通过一系列 <code>if</code> 分支实现 14+ 种命令路径的懒加载路由：</p>
+
+<div class="mermaid">
+flowchart TB
+    ENTRY["void main()"] --> ARGS["解析 process.argv"]
+    ARGS --> V{"--version / -v?"}
+    V -->|yes| PRINT["console.log(MACRO.VERSION)\n零 import 返回"]
+    V -->|no| PROFILER["加载 startupProfiler"]
+    PROFILER --> DUMP{"--dump-system-prompt?"}
+    DUMP -->|yes| SYSPROMPT["输出渲染后的 System Prompt"]
+    DUMP -->|no| CHROME{"--claude-in-chrome-mcp?"}
+    CHROME -->|yes| MCPCHROME["Chrome MCP Server"]
+    CHROME -->|no| DAEMON{"--daemon-worker?"}
+    DAEMON -->|yes| WORKER["Daemon Worker"]
+    DAEMON -->|no| BRIDGE{"remote-control/rc/bridge?"}
+    BRIDGE -->|yes| BRIDGEMAIN["Bridge Main + Auth + Policy"]
+    BRIDGE -->|no| BG{"ps/logs/attach/kill/--bg?"}
+    BG -->|yes| BGHANDLER["bg.js 后台会话管理"]
+    BG -->|no| TPL{"new/list/reply?"}
+    TPL -->|yes| TEMPLATES["Template Jobs"]
+    TPL -->|no| RUNNER{"environment-runner?"}
+    RUNNER -->|yes| ENVRUNNER["BYOC 环境执行器"]
+    RUNNER -->|no| FULL["加载 main.js\n完整 CLI 启动"]
+</div>
+
+<h4>Fast-Path 路由表</h4>
+<table>
+  <thead><tr><th>命令/标志</th><th>Fast Path</th><th>Import 开销</th><th>功能</th></tr></thead>
+  <tbody>
+    <tr><td><strong>--version / -v</strong></td><td>✅ 最快</td><td>0 (仅 MACRO.VERSION)</td><td>输出版本号</td></tr>
+    <tr><td><strong>--dump-system-prompt</strong></td><td>✅</td><td>config + model + prompts</td><td>输出 System Prompt 文本</td></tr>
+    <tr><td><strong>--claude-in-chrome-mcp</strong></td><td>✅</td><td>claudeInChrome/mcpServer</td><td>Chrome 扩展 MCP 服务</td></tr>
+    <tr><td><strong>--chrome-native-host</strong></td><td>✅</td><td>claudeInChrome/chromeNativeHost</td><td>Chrome Native Messaging</td></tr>
+    <tr><td><strong>--computer-use-mcp</strong></td><td>✅ (CHICAGO_MCP)</td><td>computerUse/mcpServer</td><td>计算机操控 MCP</td></tr>
+    <tr><td><strong>--daemon-worker</strong></td><td>✅ (DAEMON)</td><td>daemon/workerRegistry</td><td>守护进程 Worker</td></tr>
+    <tr><td><strong>remote-control / rc / bridge</strong></td><td>✅ (BRIDGE_MODE)</td><td>bridge + auth + policy</td><td>远程控制 Bridge</td></tr>
+    <tr><td><strong>daemon [subcmd]</strong></td><td>✅ (DAEMON)</td><td>daemon/main + sinks</td><td>守护进程管理</td></tr>
+    <tr><td><strong>ps / logs / attach / kill</strong></td><td>✅ (BG_SESSIONS)</td><td>cli/bg</td><td>后台会话管理</td></tr>
+    <tr><td><strong>new / list / reply</strong></td><td>✅ (TEMPLATES)</td><td>cli/handlers/templateJobs</td><td>模板任务命令</td></tr>
+    <tr><td><strong>environment-runner</strong></td><td>✅ (BYOC)</td><td>environment-runner/main</td><td>BYOC 环境执行器</td></tr>
+    <tr><td><strong>self-hosted-runner</strong></td><td>✅ (SELF_HOSTED)</td><td>self-hosted-runner/main</td><td>自托管执行器</td></tr>
+    <tr><td><strong>--worktree --tmux</strong></td><td>✅</td><td>utils/worktree</td><td>Tmux + Worktree 快速路径</td></tr>
+    <tr><td><strong>其他（默认路径）</strong></td><td>❌ 完整启动</td><td>main.js 全量加载</td><td>标准 CLI 交互模式</td></tr>
+  </tbody>
+</table>
+
+<h4>顶层副作用（Top-Level Side Effects）</h4>
+<ul>
+  <li><strong>COREPACK_ENABLE_AUTO_PIN = '0'</strong>：修复 corepack 自动钉版本导致 yarnpkg 被写入 package.json 的 bug</li>
+  <li><strong>NODE_OPTIONS += --max-old-space-size=8192</strong>：CCR（Cloud Container Runtime）环境下，将子进程堆限制设为 8GB（容器共 16GB）</li>
+  <li><strong>ABLATION_BASELINE 环境变量注入</strong>：Harness-science L0 实验基线——一次性禁用 SIMPLE/THINKING/INTERLEAVED/COMPACT/AUTO_MEMORY/BACKGROUND_TASKS 6 个特性</li>
+</ul>
+
+<div class="tip tip-warn">
+  <strong>⚡ 性能关键：</strong>所有 Fast-Path 均使用 <code>await import(...)</code> 动态导入——确保 <code>--version</code> 路径的冷启动为 <strong>亚毫秒级</strong>。
+  <code>feature()</code> 调用内联（非函数导入）以支持构建时 Dead Code Elimination (DCE)。
+</div>
+
+<!-- ── 30.2 初始化管线 ── -->
+<h3 id="init-chain">30.2 初始化管线 (init.ts)</h3>
+
+<p><code>init.ts</code> 是 <strong>应用初始化的中枢协调器</strong>，使用 <code>memoize</code> 确保幂等性。341 行代码精确编排了 15+ 项初始化任务的并发与依赖关系：</p>
+
+<div class="flow-step"><div class="step-num">1</div><div>enableConfigs() — 验证并激活配置系统（JSON 解析 + 错误弹窗）</div></div>
+<div class="flow-arrow">↓</div>
+<div class="flow-step"><div class="step-num">2</div><div>applySafeConfigEnvironmentVariables() — 应用安全的环境变量（信任对话前）</div></div>
+<div class="flow-arrow">↓</div>
+<div class="flow-step"><div class="step-num">3</div><div>applyExtraCACertsFromConfig() — 注入自定义 CA 证书（必须在首次 TLS 握手前）</div></div>
+<div class="flow-arrow">↓</div>
+<div class="flow-step"><div class="step-num">4</div><div>setupGracefulShutdown() — 注册进程退出清理钩子</div></div>
+<div class="flow-arrow">↓</div>
+<div class="flow-step"><div class="step-num">5</div><div>void Promise.all([1P EventLogging, GrowthBook]) — 异步初始化遥测（fire-and-forget）</div></div>
+<div class="flow-arrow">↓</div>
+<div class="flow-step"><div class="step-num">6</div><div>configureGlobalMTLS() + configureGlobalAgents() — 全局 mTLS + 代理配置</div></div>
+<div class="flow-arrow">↓</div>
+<div class="flow-step"><div class="step-num">7</div><div>preconnectAnthropicApi() — TCP+TLS 预连接（100-200ms 与后续操作重叠）</div></div>
+<div class="flow-arrow">↓</div>
+<div class="flow-step"><div class="step-num">8</div><div>initUpstreamProxy() — CCR 环境 CONNECT relay（火即忘，失败开放运行）</div></div>
+<div class="flow-arrow">↓</div>
+<div class="flow-step"><div class="step-num">9</div><div>ensureScratchpadDir() — 创建 Scratchpad 目录（条件：isScratchpadEnabled()）</div></div>
+
+<h4>并发任务矩阵</h4>
+<table>
+  <thead><tr><th>任务</th><th>模式</th><th>顺序约束</th></tr></thead>
+  <tbody>
+    <tr><td><strong>1P Event Logging + GrowthBook</strong></td><td>void Promise.all (fire-and-forget)</td><td>无</td></tr>
+    <tr><td><strong>OAuth 账户信息填充</strong></td><td>void populateOAuthAccountInfoIfNeeded()</td><td>无</td></tr>
+    <tr><td><strong>JetBrains IDE 检测</strong></td><td>void initJetBrainsDetection()</td><td>无（填充缓存供后续同步访问）</td></tr>
+    <tr><td><strong>GitHub 仓库检测</strong></td><td>void detectCurrentRepository()</td><td>无</td></tr>
+    <tr><td><strong>Remote Managed Settings</strong></td><td>initializeRemoteManagedSettingsLoadingPromise()</td><td>需 auth 头</td></tr>
+    <tr><td><strong>Policy Limits</strong></td><td>initializePolicyLimitsLoadingPromise()</td><td>需 auth 头</td></tr>
+    <tr><td><strong>mTLS + Proxy</strong></td><td>同步阻塞</td><td><strong>必须在 preconnect 前完成</strong></td></tr>
+  </tbody>
+</table>
+
+<h4>Telemetry 后初始化</h4>
+<p><code>initializeTelemetryAfterTrust()</code> 在信任对话完成后调用，对于 Remote Managed Settings 用户会等待设置加载，然后重新应用环境变量再初始化 OpenTelemetry。
+  Lazy-load ~400KB OpenTelemetry + protobuf 模块以避免启动延迟。gRPC exporter (~700KB via @grpc/grpc-js) 进一步延迟加载。</p>
+
+<!-- ── 30.3 MCP Server ── -->
+<h3 id="mcp-server">30.3 MCP Server 入口 (mcp.ts)</h3>
+
+<p>将 Claude Code 的全部工具集通过 <strong>MCP (Model Context Protocol) 标准协议</strong>暴露为一个 Stdio 传输的 MCP 服务器，供外部 LLM 集成调用：</p>
+
+<table>
+  <thead><tr><th>组件</th><th>实现</th><th>设计决策</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Server 实例</strong></td><td>@modelcontextprotocol/sdk Server</td><td>名称 "claude/tengu"，版本 MACRO.VERSION</td></tr>
+    <tr><td><strong>传输层</strong></td><td>StdioServerTransport</td><td>标准 stdin/stdout 通信</td></tr>
+    <tr><td><strong>ListTools</strong></td><td>getTools() → zodToJsonSchema</td><td>动态生成输入/输出 Schema；outputSchema 仅保留 type:"object" 的（z.union 等被跳过）</td></tr>
+    <tr><td><strong>CallTool</strong></td><td>findToolByName → tool.call()</td><td>完整的验证链：isEnabled → validateInput → call → hasPermissionsToUseTool</td></tr>
+    <tr><td><strong>File State 缓存</strong></td><td>createFileStateCacheWithSizeLimit(100)</td><td>100 文件 + 25MB 上限的 LRU 缓存，防止无界内存增长</td></tr>
+    <tr><td><strong>上下文构造</strong></td><td>ToolUseContext 静态定义</td><td>isNonInteractiveSession=true，thinkingConfig=disabled，agentDefinitions 为空</td></tr>
+  </tbody>
+</table>
+
+<!-- ── 30.4 Agent SDK 类型系统 ── -->
+<h3 id="agent-sdk">30.4 Agent SDK 类型系统 (agentSdkTypes.ts)</h3>
+
+<p>这是 Claude Code 暴露给外部开发者的 <strong>SDK 公共 API 类型定义</strong>。设计为 "类型桩" (Type Stubs)：所有函数仅包含 <code>throw new Error('not implemented')</code>，在构建时由真正的运行时实现替换。</p>
+
+<h4>SDK 函数 API</h4>
+<table>
+  <thead><tr><th>函数</th><th>稳定性</th><th>功能</th></tr></thead>
+  <tbody>
+    <tr><td><strong>query()</strong></td><td>稳定</td><td>单次 prompt → 流式结果</td></tr>
+    <tr><td><strong>tool()</strong></td><td>稳定</td><td>注册自定义 MCP 工具（Zod Schema）</td></tr>
+    <tr><td><strong>createSdkMcpServer()</strong></td><td>稳定</td><td>创建进程内 MCP Server 实例</td></tr>
+    <tr><td><strong>unstable_v2_createSession()</strong></td><td>@alpha</td><td>V2 多轮持久会话</td></tr>
+    <tr><td><strong>unstable_v2_resumeSession()</strong></td><td>@alpha</td><td>V2 恢复已有会话</td></tr>
+    <tr><td><strong>unstable_v2_prompt()</strong></td><td>@alpha</td><td>V2 单次便捷 prompt</td></tr>
+    <tr><td><strong>getSessionMessages()</strong></td><td>稳定</td><td>读取 JSONL 转录记录</td></tr>
+    <tr><td><strong>listSessions()</strong></td><td>稳定</td><td>按项目/全局列出会话</td></tr>
+    <tr><td><strong>forkSession()</strong></td><td>稳定</td><td>分叉会话（UUID 重映射）</td></tr>
+    <tr><td><strong>watchScheduledTasks()</strong></td><td>@internal</td><td>Daemon Cron 调度器</td></tr>
+    <tr><td><strong>connectRemoteControl()</strong></td><td>@internal</td><td>Daemon WebSocket Bridge</td></tr>
+  </tbody>
+</table>
+
+<h4>类型架构分层</h4>
+<ul>
+  <li><strong>sdk/coreTypes.ts</strong>：由 Zod Schema 生成的可序列化类型（HOOK_EVENTS × 24、EXIT_REASONS × 6）</li>
+  <li><strong>sdk/runtimeTypes.ts</strong>：不可序列化的运行时类型（回调、接口）</li>
+  <li><strong>sdk/controlTypes.ts</strong>：SDK 控制协议（Bridge 子路径消费者）</li>
+  <li><strong>sdk/toolTypes.ts</strong>：工具类型（@internal 直到 API 稳定）</li>
+  <li><strong>sdk/settingsTypes.generated.ts</strong>：从 JSON Schema 生成的设置类型</li>
+</ul>
+
+<!-- ── 30.5 Sandbox 类型 ── -->
+<h3 id="sandbox-types">30.5 Sandbox 类型定义 (sandboxTypes.ts)</h3>
+
+<p>Sandbox 配置的 <strong>单一真相源（Single Source of Truth）</strong>，使用 Zod v4 Schema 定义，同时被 SDK 和 settings 验证层引用：</p>
+
+<table>
+  <thead><tr><th>Schema</th><th>核心字段</th><th>设计意图</th></tr></thead>
+  <tbody>
+    <tr><td><strong>SandboxNetworkConfigSchema</strong></td><td>allowedDomains · allowUnixSockets · httpProxyPort · socksProxyPort</td><td>网络白名单 + MITM 代理配置</td></tr>
+    <tr><td><strong>SandboxFilesystemConfigSchema</strong></td><td>allowWrite · denyWrite · denyRead · allowRead</td><td>文件系统读写权限（与 Edit/Read 权限规则合并）</td></tr>
+    <tr><td><strong>SandboxSettingsSchema</strong></td><td>enabled · failIfUnavailable · autoAllowBashIfSandboxed · enableWeakerNestedSandbox</td><td>沙箱总开关 + 安全降级策略</td></tr>
+  </tbody>
+</table>
+
+<h4>关键安全设计</h4>
+<ul>
+  <li><strong>allowManagedDomainsOnly</strong>：当由 managed settings 设置时，仅尊重管理源的域名白名单，用户/项目/本地设置的域名被忽略</li>
+  <li><strong>allowManagedReadPathsOnly</strong>：当由 managed settings 设置时，仅使用管理源的 allowRead 路径</li>
+  <li><strong>failIfUnavailable</strong>：企业部署模式——沙箱不可用时直接 exit 而非降级运行</li>
+  <li><strong>enableWeakerNetworkIsolation</strong>：macOS 专用——允许 trustd 服务访问以支持 Go CLI 工具的 TLS 证书验证（降低安全性）</li>
+  <li><strong>enabledPlatforms</strong>：隐藏字段（.passthrough()），限制沙箱开启的平台（为 NVIDIA 企业部署设计）</li>
+  <li><strong>excludedCommands</strong>：特定命令绕过沙箱列表</li>
+</ul>
+
+<div class="tip tip-key">
+  <strong>🔑 一句话总结：</strong><code>entrypoints/</code> 是 Claude Code 的 <strong>进程引导基础设施</strong>。<code>cli.tsx</code>（303行）通过 14+ 条 Fast-Path 路由实现极致懒加载——<code>--version</code> 零 import 返回，完整启动仅在默认路径触发；<code>init.ts</code>（341行）以 memoize 保证幂等性，精确编排 15+ 项初始化任务的并发拓扑（fire-and-forget 异步 + 同步阻塞约束）；<code>mcp.ts</code> 将全部工具暴暴露为 MCP Stdio 服务器；<code>agentSdkTypes.ts</code> 定义了 V1/V2 双版本 SDK 公共 API（10+ 函数桩）；<code>sandboxTypes.ts</code> 用 Zod v4 构建了网络/文件系统/总开关三层沙箱安全 Schema。
+</div>
+
+</section>
+
+</main>
+<button class="back-top" id="backTop" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button>
+<script>
+function toggleCollapsible(el){const h=el.querySelector('.collapsible-header');const b=el.querySelector('.collapsible-body');if(h&&b){h.classList.toggle('open');b.classList.toggle('show')}}
+window.addEventListener('scroll',()=>{const b=document.getElementById('backTop');b&&b.classList.toggle('show',window.scrollY>400)});
+function handleSearch(v){document.querySelectorAll('.section').forEach(s=>{s.style.display=!v||s.textContent.toLowerCase().includes(v.toLowerCase())?'':'none'})}
+document.querySelectorAll('.sidebar .nav-item').forEach(a=>{a.addEventListener('click',()=>{document.querySelector('.sidebar').classList.remove('open')})});
+</script>
+</body>
+</html>

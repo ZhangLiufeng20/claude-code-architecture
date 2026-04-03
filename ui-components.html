@@ -1,0 +1,889 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UI 渲染层 — Claude Code v2.1.88 架构深度解析</title>
+<meta name="description" content="基于 Source Map 逆向还原的 Claude Code 架构核心概念与源码解析">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-jsx.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-tsx.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+<script type="module">
+import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+mermaid.initialize({startOnLoad:true,theme:"dark",themeVariables:{primaryColor:"#6d28d9",primaryTextColor:"#e2e8f0",primaryBorderColor:"#7c3aed",lineColor:"#7c3aed",secondaryColor:"#1e1b4b",tertiaryColor:"#0f172a"}});
+</script>
+<style>
+
+
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#05050a;--bg2:#0a0a16;--surface:rgba(20,20,38,.5);--surface2:rgba(35,35,65,.6);--border:rgba(255,255,255,.08);--border-hover:rgba(139,92,246,.5);--text:#f8fafc;--text2:#94a3b8;--text3:#64748b;--accent:#8b5cf6;--accent2:#6d28d9;--accent3:#c084fc;--green:#10b981;--blue:#3b82f6;--orange:#f59e0b;--red:#ef4444;--pink:#ec4899;--cyan:#06b6d4;--sidebar-w:280px;--header-h:64px}
+html{scroll-behavior:smooth;scroll-padding-top:80px}
+body{font-family:'Inter',system-ui,sans-serif;background-color:var(--bg);background-image:radial-gradient(circle at 15% 0%,rgba(139,92,246,.15) 0,transparent 30%),radial-gradient(circle at 85% 10%,rgba(6,182,212,.1) 0,transparent 30%);background-attachment:fixed;color:var(--text);line-height:1.7;overflow-x:hidden}
+::-webkit-scrollbar{width:6px}
+::-webkit-scrollbar-track{background:rgba(0,0,0,.2)}
+::-webkit-scrollbar-thumb{background:var(--surface2);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:var(--accent)}
+a{color:var(--accent3);text-decoration:none;transition:color .2s}
+a:hover{color:var(--cyan)}
+code{font-family:'JetBrains Mono',monospace}
+/* Header */
+.header{position:fixed;top:0;left:0;right:0;height:var(--header-h);background:rgba(5,5,10,.6);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 24px;z-index:100;gap:16px}
+.header .logo{font-size:22px;font-weight:900;letter-spacing:-.5px;background:linear-gradient(135deg,#c084fc,#38bdf8,#818cf8);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.header .version{font-size:12px;padding:2px 10px;border-radius:99px;background:var(--surface);color:var(--accent3);border:1px solid var(--border);font-weight:600;box-shadow:inset 0 1px 0 rgba(255,255,255,.1)}
+.header .search-box{flex:1;max-width:400px;margin-left:auto}
+.header .search-box input{width:100%;padding:10px 16px;border-radius:12px;border:1px solid var(--border);background:var(--surface);backdrop-filter:blur(10px);color:var(--text);font-size:14px;outline:none;transition:all .3s ease;box-shadow:inset 0 1px 2px rgba(0,0,0,.2)}
+.header .search-box input:focus{border-color:var(--accent);background:rgba(20,20,40,.8);box-shadow:0 0 0 4px rgba(139,92,246,.1)}
+.menu-btn{display:none;background:none;border:none;color:var(--text);font-size:24px;cursor:pointer}
+/* Sidebar */
+.sidebar{position:fixed;left:0;top:var(--header-h);bottom:0;width:var(--sidebar-w);background:rgba(10,10,22,.6);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-right:1px solid var(--border);overflow-y:auto;padding:20px 0;z-index:90;transition:transform .3s cubic-bezier(.4,0,.2,1)}
+.sidebar .nav-group{margin-bottom:12px}
+.sidebar .nav-group-title{padding:10px 20px;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:rgba(255,255,255,.3)}
+.sidebar .nav-item{display:block;padding:8px 20px 8px 28px;font-size:13px;font-weight:500;color:var(--text2);transition:all .25s ease;border-left:3px solid transparent;cursor:pointer}
+.sidebar .nav-item:hover{color:#fff;background:linear-gradient(90deg,var(--surface),transparent)}
+.sidebar .nav-item.active{color:var(--accent3);border-left-color:var(--accent);background:linear-gradient(90deg,rgba(139,92,246,.1),transparent);text-shadow:0 0 8px rgba(192,132,252,.3)}
+/* Main */
+.main{margin-left:var(--sidebar-w);margin-top:var(--header-h);padding:40px 60px 80px;max-width:1040px}
+/* Sections */
+.section{margin-bottom:80px;animation:fadeIn .6s cubic-bezier(.16,1,.3,1)}
+@keyframes fadeIn{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:translateY(0)}}
+.section-title{font-size:32px;font-weight:900;letter-spacing:-.5px;margin-bottom:32px;padding-bottom:16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;position:relative}
+.section-title::after{content:'';position:absolute;left:0;bottom:-1px;height:1px;width:100px;background:linear-gradient(90deg,var(--accent),transparent)}
+.section-title .icon{font-size:32px;filter:drop-shadow(0 0 12px rgba(139,92,246,.4))}
+.section-title .num{font-size:13px;padding:4px 12px;border-radius:99px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;font-weight:700;box-shadow:0 4px 12px rgba(109,40,217,.3)}
+h3{font-size:22px;font-weight:800;letter-spacing:-.3px;margin:36px 0 16px;background:linear-gradient(135deg,#fff,#cbd5e1);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+h4{font-size:16px;font-weight:700;margin:24px 0 10px;color:var(--accent3)}
+p{margin-bottom:16px;color:var(--text2);font-size:15px}
+ul,ol{margin:12px 0 20px 24px;color:var(--text2);font-size:15px}
+li{margin-bottom:6px}
+li::marker{color:var(--accent)}
+strong{color:#fff;font-weight:600}
+/* Cards */
+.card{background:var(--surface);backdrop-filter:blur(16px);border:1px solid var(--border);border-radius:16px;padding:24px;margin:20px 0;transition:all .4s cubic-bezier(.16,1,.3,1);box-shadow:0 4px 20px rgba(0,0,0,.2),inset 0 1px 0 rgba(255,255,255,.05)}
+.card:hover{transform:translateY(-4px);border-color:var(--border-hover);box-shadow:0 12px 40px rgba(0,0,0,.4),0 0 20px rgba(139,92,246,.15),inset 0 1px 0 rgba(255,255,255,.1)}
+.card-title{font-size:18px;font-weight:800;margin-bottom:12px;color:#fff}
+/* Stats Grid */
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin:24px 0}
+.stat-card{background:var(--surface);backdrop-filter:blur(16px);border:1px solid var(--border);border-radius:16px;padding:24px;text-align:center;transition:all .4s ease;box-shadow:inset 0 1px 0 rgba(255,255,255,.02)}
+.stat-card:hover{transform:translateY(-4px) scale(1.02);border-color:var(--border-hover);background:linear-gradient(180deg,rgba(35,35,65,.8),rgba(20,20,38,.5))}
+.stat-card .value{font-size:36px;font-weight:900;letter-spacing:-1px;background:linear-gradient(135deg,#c084fc,#38bdf8);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;filter:drop-shadow(0 2px 8px rgba(56,189,248,.3))}
+.stat-card .label{font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--text3);margin-top:8px}
+/* Table */
+table{width:100%;border-collapse:separate;border-spacing:0;margin:24px 0;font-size:14px;border-radius:12px;overflow:hidden;border:1px solid var(--border);background:var(--surface)}
+th{background:rgba(255,255,255,.03);padding:14px 18px;text-align:left;font-weight:700;color:var(--accent3);border-bottom:1px solid var(--border)}
+td{padding:14px 18px;border-bottom:1px solid var(--border);color:var(--text2)}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:rgba(255,255,255,.02)}
+/* Code blocks / Collapsible */
+pre[class*="language-"]{border-radius:12px!important;margin:16px 0!important;border:1px solid var(--border)!important;font-size:13px!important;background:#0d0d16!important;box-shadow:inset 0 2px 10px rgba(0,0,0,.4)}
+.collapsible{margin:16px 0;border-radius:12px;overflow:hidden;border:1px solid var(--border);background:var(--surface);transition:border-color .3s;box-shadow:inset 0 1px 0 rgba(255,255,255,.05)}
+.collapsible:hover{border-color:var(--border-hover)}
+.collapsible-header{display:flex;align-items:center;gap:12px;padding:14px 20px;cursor:pointer;font-size:14px;font-weight:700;color:#fff;transition:all .3s;user-select:none;background:rgba(255,255,255,.02)}
+.collapsible-header:hover{background:rgba(255,255,255,.05)}
+.collapsible-header .arrow{transition:transform .3s cubic-bezier(.4,0,.2,1);font-size:12px;color:var(--text3)}
+.collapsible-header.open .arrow{transform:rotate(90deg);color:var(--accent3)}
+.collapsible-body{display:none;border-top:1px solid var(--border);background:#0d0d16}
+.collapsible-body.show{display:block;animation:slideDown .3s ease}
+@keyframes slideDown{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:translateY(0)}}
+.collapsible-body pre{margin:0!important;border:none!important;border-radius:0!important;box-shadow:none}
+/* Tags */
+.tag{display:inline-block;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:700;letter-spacing:.5px;margin:2px 4px 2px 0;text-transform:uppercase}
+.tag-purple{background:rgba(192,132,252,.15);color:#d8b4fe;border:1px solid rgba(192,132,252,.3)}
+.tag-green{background:rgba(16,185,129,.15);color:#6ee7b7;border:1px solid rgba(16,185,129,.3)}
+.tag-blue{background:rgba(59,130,246,.15);color:#93c5fd;border:1px solid rgba(59,130,246,.3)}
+.tag-orange{background:rgba(245,158,11,.15);color:#fcd34d;border:1px solid rgba(245,158,11,.3)}
+.tag-red{background:rgba(239,68,68,.15);color:#fca5a5;border:1px solid rgba(239,68,68,.3)}
+.tag-cyan{background:rgba(6,182,212,.15);color:#67e8f9;border:1px solid rgba(6,182,212,.3)}
+.tag-pink{background:rgba(236,72,153,.15);color:#f9a8d4;border:1px solid rgba(236,72,153,.3)}
+/* Mermaid */
+.mermaid{margin:24px 0;padding:24px;background:var(--surface);backdrop-filter:blur(10px);border:1px solid var(--border);border-radius:16px;overflow-x:auto;box-shadow:inset 0 1px 0 rgba(255,255,255,.05);transition:border-color .3s}
+.mermaid:hover{border-color:rgba(139,92,246,.3)}
+/* Tips */
+.tip{padding:16px 20px;border-radius:12px;margin:20px 0;font-size:14.5px;border:1px solid var(--border);border-left:4px solid;backdrop-filter:blur(10px)}
+.tip-info{background:rgba(59,130,246,.05);border-left-color:var(--blue);border-color:rgba(59,130,246,.2)}
+.tip-warn{background:rgba(245,158,11,.05);border-left-color:var(--orange);border-color:rgba(245,158,11,.2)}
+.tip-key{background:rgba(139,92,246,.05);border-left-color:var(--accent);border-color:rgba(139,92,246,.2);box-shadow:0 4px 20px rgba(139,92,246,.05)}
+/* Back to top */
+.back-top{position:fixed;bottom:32px;right:32px;width:48px;height:48px;border-radius:50%;background:linear-gradient(135deg,var(--accent2),var(--accent));color:#fff;border:none;font-size:22px;cursor:pointer;display:none;align-items:center;justify-content:center;box-shadow:0 8px 24px rgba(109,40,217,.4),inset 0 1px 0 rgba(255,255,255,.2);transition:all .3s cubic-bezier(.16,1,.3,1);z-index:99}
+.back-top:hover{transform:translateY(-6px);box-shadow:0 12px 32px rgba(109,40,217,.6),inset 0 1px 0 rgba(255,255,255,.3)}
+.back-top.show{display:flex}
+/* Responsive */
+@media(max-width:900px){
+.sidebar{transform:translateX(-100%)}
+.sidebar.open{transform:translateX(0)}
+.main{margin-left:0;padding:24px 20px 80px}
+.menu-btn{display:block}
+:root{--sidebar-w:260px}
+.section-title{font-size:26px}
+.stats-grid{grid-template-columns:1fr}
+}
+/* File tree */
+.file-tree{font-family:'JetBrains Mono',monospace;font-size:13px;background:rgba(10,10,16,.8);border:1px solid var(--border);border-radius:12px;padding:20px;margin:16px 0;line-height:1.9;box-shadow:inset 0 2px 10px rgba(0,0,0,.3)}
+.file-tree .dir{color:var(--accent3);font-weight:600}
+.file-tree .file{color:var(--text2)}
+.file-tree .comment{color:var(--text3);font-style:italic}
+/* Flow arrow */
+.flow-step{display:flex;align-items:center;gap:16px;margin:10px 0;padding:12px 20px;background:var(--surface);border:1px solid var(--border);border-radius:12px;font-size:14.5px;transition:transform .2s;box-shadow:inset 0 1px 0 rgba(255,255,255,.02)}
+.flow-step:hover{transform:translateX(4px);border-color:var(--border-hover)}
+.flow-step .step-num{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,var(--accent2),var(--accent));color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;flex-shrink:0;box-shadow:0 2px 8px rgba(109,40,217,.3)}
+.flow-arrow{text-align:center;color:var(--accent3);font-size:20px;margin:6px 0;opacity:.7}
+/* Inline code */
+:not(pre)>code{background:rgba(255,255,255,.05);padding:3px 8px;border-radius:6px;font-size:13px;color:#c084fc;border:1px solid rgba(255,255,255,.05)}
+
+
+</style>
+</head>
+<body>
+<header class="header">
+  <button class="menu-btn" onclick="document.querySelector('.sidebar').classList.toggle('open')">&#9776;</button>
+  <div class="logo"><a href="index.html">Claude Code 架构解析</a></div>
+  <span class="version">v2.1.88</span>
+  <div class="search-box"><input type="text" id="searchInput" placeholder="&#x1F50D; 搜索章节内容..." oninput="handleSearch(this.value)"></div>
+</header>
+<nav class="sidebar" id="sidebar">
+
+  <div class="nav-group">
+    <div class="nav-group-title">概览</div>
+    <a class="nav-item" href="index.html#overview">📋 项目概览</a>
+    <a class="nav-item" href="index.html#structure">📁 目录结构</a>
+    <a class="nav-item" href="index.html#arch">🏗️ 架构分层</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">核心引擎</div>
+    <a class="nav-item" href="core-engine.html#startup">🚀 启动流程</a>
+    <a class="nav-item" href="core-engine.html#tool-system">🔧 Tool 系统</a>
+    <a class="nav-item" href="core-engine.html#bash-security">🛡️ 安全沙箱</a>
+    <a class="nav-item" href="core-engine.html#query-loop">🔄 Query Loop</a>
+    <a class="nav-item" href="core-engine.html#query-engine">⚙️ QueryEngine</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">入口与引导</div>
+    <a class="nav-item" href="entrypoints.html#entrypoints">🚪 入口引导层</a>
+    <a class="nav-item" href="entrypoints.html#cli-bootstrap" style="padding-left:40px;font-size:12px;opacity:.7">↳ CLI Fast-Path</a>
+    <a class="nav-item" href="entrypoints.html#init-chain" style="padding-left:40px;font-size:12px;opacity:.7">↳ 初始化管线</a>
+    <a class="nav-item" href="entrypoints.html#mcp-server" style="padding-left:40px;font-size:12px;opacity:.7">↳ MCP Server</a>
+    <a class="nav-item" href="entrypoints.html#agent-sdk" style="padding-left:40px;font-size:12px;opacity:.7">↳ Agent SDK</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">子系统</div>
+    <a class="nav-item" href="subsystems.html#commands">💬 命令系统</a>
+    <a class="nav-item" href="subsystems.html#permissions">🔐 权限系统</a>
+    <a class="nav-item" href="subsystems.html#state">📦 状态管理</a>
+    <a class="nav-item" href="subsystems.html#api">🌐 API 通信</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">高级特性</div>
+    <a class="nav-item" href="advanced.html#coordinator">🤖 多Agent协调</a>
+    <a class="nav-item" href="advanced.html#mcp">🔌 MCP 集成</a>
+    <a class="nav-item" href="advanced.html#tasks">⚙️ 后台任务</a>
+    <a class="nav-item" href="advanced.html#plugins">📦 插件与技能</a>
+    <a class="nav-item" href="advanced.html#feature-flags">🚩 Feature Flags</a>
+    <a class="nav-item" href="context.html#context">🧠 上下文管理</a>
+    <a class="nav-item" href="context.html#ctx-search" style="padding-left:40px;font-size:12px;opacity:.7">↳ Grep vs RAG</a>
+    <a class="nav-item" href="context.html#ctx-memory" style="padding-left:40px;font-size:12px;opacity:.7">↳ 6层记忆体系</a>
+    <a class="nav-item" href="context.html#ctx-recall" style="padding-left:40px;font-size:12px;opacity:.7">↳ LLM 记忆召回</a>
+    <a class="nav-item" href="context.html#ctx-sysprompt" style="padding-left:40px;font-size:12px;opacity:.7">↳ System Prompt</a>
+    <a class="nav-item" href="context.html#ctx-decisions" style="padding-left:40px;font-size:12px;opacity:.7">↳ 设计决策表</a>
+    <a class="nav-item" href="ui-components.html#ui">🎨 UI 渲染</a>
+    <a class="nav-item" href="ui-components.html#ui-compiler" style="padding-left:40px;font-size:12px;opacity:.7">↳ React Compiler</a>
+    <a class="nav-item" href="ui-components.html#ui-messages" style="padding-left:40px;font-size:12px;opacity:.7">↳ 消息管线</a>
+    <a class="nav-item" href="ui-components.html#ui-virtual" style="padding-left:40px;font-size:12px;opacity:.7">↳ 虚拟滚动</a>
+    <a class="nav-item" href="ui-components.html#ui-fullscreen" style="padding-left:40px;font-size:12px;opacity:.7">↳ 全屏布局</a>
+    <a class="nav-item" href="ui-components.html#ui-perf" style="padding-left:40px;font-size:12px;opacity:.7">↳ 性能工程</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">基础设施</div>
+    <a class="nav-item" href="utils-infra.html#infra">🔩 基础设施</a>
+    <a class="nav-item" href="utils-infra.html#infra-session" style="padding-left:40px;font-size:12px;opacity:.7">↳ 会话持久化</a>
+    <a class="nav-item" href="utils-infra.html#infra-messages" style="padding-left:40px;font-size:12px;opacity:.7">↳ 消息系统</a>
+    <a class="nav-item" href="utils-infra.html#infra-hooks" style="padding-left:40px;font-size:12px;opacity:.7">↳ Hook 引擎</a>
+    <a class="nav-item" href="utils-infra.html#infra-config" style="padding-left:40px;font-size:12px;opacity:.7">↳ 配置与认证</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">React Hooks</div>
+    <a class="nav-item" href="hooks-system.html#hooks">🪝 React Hooks</a>
+    <a class="nav-item" href="hooks-system.html#hooks-input" style="padding-left:40px;font-size:12px;opacity:.7">↳ 输入管线</a>
+    <a class="nav-item" href="hooks-system.html#hooks-virtual" style="padding-left:40px;font-size:12px;opacity:.7">↳ 虚拟滚动</a>
+    <a class="nav-item" href="hooks-system.html#hooks-voice" style="padding-left:40px;font-size:12px;opacity:.7">↳ 语音子系统</a>
+    <a class="nav-item" href="hooks-system.html#hooks-collab" style="padding-left:40px;font-size:12px;opacity:.7">↳ 协作通信</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">渲染引擎</div>
+    <a class="nav-item" href="ink-engine.html#ink">🖼️ Ink 渲染引擎</a>
+    <a class="nav-item" href="ink-engine.html#ink-dom" style="padding-left:40px;font-size:12px;opacity:.7">↳ 自定义 DOM</a>
+    <a class="nav-item" href="ink-engine.html#ink-pipeline" style="padding-left:40px;font-size:12px;opacity:.7">↳ 渲染管线</a>
+    <a class="nav-item" href="ink-engine.html#ink-screen" style="padding-left:40px;font-size:12px;opacity:.7">↳ 屏幕缓冲区</a>
+    <a class="nav-item" href="ink-engine.html#ink-interact" style="padding-left:40px;font-size:12px;opacity:.7">↳ 全屏交互</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">插件系统</div>
+    <a class="nav-item" href="advanced.html#plugins">🔌 插件系统</a>
+    <a class="nav-item" href="advanced.html#plugins-loader" style="padding-left:40px;font-size:12px;opacity:.7">↳ 发现与加载</a>
+    <a class="nav-item" href="advanced.html#plugins-marketplace" style="padding-left:40px;font-size:12px;opacity:.7">↳ Marketplace</a>
+    <a class="nav-item" href="advanced.html#plugins-schema" style="padding-left:40px;font-size:12px;opacity:.7">↳ Schema 安全</a>
+    <a class="nav-item" href="advanced.html#plugins-lifecycle" style="padding-left:40px;font-size:12px;opacity:.7">↳ 验证生命周期</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">Bridge 通信</div>
+    <a class="nav-item" href="bridge.html#bridge">🌉 Bridge 通信</a>
+    <a class="nav-item" href="bridge.html#bridge-api" style="padding-left:40px;font-size:12px;opacity:.7">↳ 环境与轮询</a>
+    <a class="nav-item" href="bridge.html#bridge-repl" style="padding-left:40px;font-size:12px;opacity:.7">↳ REPL Bridge</a>
+    <a class="nav-item" href="bridge.html#bridge-messaging" style="padding-left:40px;font-size:12px;opacity:.7">↳ 消息路由</a>
+    <a class="nav-item" href="bridge.html#bridge-transport" style="padding-left:40px;font-size:12px;opacity:.7">↳ 传输与安全</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">核心服务层</div>
+    <a class="nav-item" href="services-deep.html#services">🔗 核心服务层</a>
+    <a class="nav-item" href="services-deep.html#svc-api" style="padding-left:40px;font-size:12px;opacity:.7">↳ API 通信核心</a>
+    <a class="nav-item" href="services-deep.html#svc-retry" style="padding-left:40px;font-size:12px;opacity:.7">↳ 重试引擎</a>
+    <a class="nav-item" href="services-deep.html#svc-errors" style="padding-left:40px;font-size:12px;opacity:.7">↳ 错误分类</a>
+    <a class="nav-item" href="services-deep.html#svc-mcp" style="padding-left:40px;font-size:12px;opacity:.7">↳ MCP 客户端</a>
+    <a class="nav-item" href="services-deep.html#svc-compact" style="padding-left:40px;font-size:12px;opacity:.7">↳ 上下文压缩</a>
+    <a class="nav-item" href="services-deep.html#svc-cache" style="padding-left:40px;font-size:12px;opacity:.7">↳ 缓存检测</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">工具系统</div>
+    <a class="nav-item" href="tools-deep.html#tools-system">🛠️ 工具系统</a>
+    <a class="nav-item" href="tools-deep.html#tools-bash" style="padding-left:40px;font-size:12px;opacity:.7">↳ BashTool 深剖</a>
+    <a class="nav-item" href="tools-deep.html#tools-panorama" style="padding-left:40px;font-size:12px;opacity:.7">↳ 38 工具全景</a>
+    <a class="nav-item" href="tools-deep.html#tools-client" style="padding-left:40px;font-size:12px;opacity:.7">↳ 多云客户端</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">权限与安全</div>
+    <a class="nav-item" href="tools-deep.html#perm-engine">🛡️ 权限决策引擎</a>
+    <a class="nav-item" href="tools-deep.html#perm-pipeline" style="padding-left:40px;font-size:12px;opacity:.7">↳ 决策管线</a>
+    <a class="nav-item" href="tools-deep.html#perm-yolo" style="padding-left:40px;font-size:12px;opacity:.7">↳ Auto Mode 分类器</a>
+    <a class="nav-item" href="tools-deep.html#perm-modes" style="padding-left:40px;font-size:12px;opacity:.7">↳ 权限模式</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">常量与命令</div>
+    <a class="nav-item" href="config-cmd.html#config-cmd">📜 常量与命令</a>
+    <a class="nav-item" href="config-cmd.html#config-constants" style="padding-left:40px;font-size:12px;opacity:.7">↳ 常量系统</a>
+    <a class="nav-item" href="config-cmd.html#config-commands" style="padding-left:40px;font-size:12px;opacity:.7">↳ 命令系统</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">Agent 与状态</div>
+    <a class="nav-item" href="agent-coord.html#agent-coord">🤖 Agent 协调层</a>
+    <a class="nav-item" href="agent-coord.html#agent-lifecycle" style="padding-left:40px;font-size:12px;opacity:.7">↳ 生命周期</a>
+    <a class="nav-item" href="agent-coord.html#agent-modes" style="padding-left:40px;font-size:12px;opacity:.7">↳ 多智能体模式</a>
+    <a class="nav-item" href="subsystems.html#state-ctx">📊 状态与上下文</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">CLI 与运行时</div>
+    <a class="nav-item" href="cli-transport.html#cli-transport">🖥️ CLI 与传输层</a>
+    <a class="nav-item" href="analytics-ff.html#analytics-ff">📈 分析与特性开关</a>
+    <a class="nav-item" href="model-shell.html#model-shell">🔧 模型与 Shell</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">类型与任务</div>
+    <a class="nav-item" href="types-tasks.html#type-system">📝 类型系统</a>
+    <a class="nav-item" href="types-tasks.html#task-migration">⚙️ 任务与迁移</a>
+  </div>
+
+</nav>
+<main class="main" id="mainContent">
+
+<section class="section" id="ui">
+<h2 class="section-title"><span class="icon">🎨</span> UI 渲染层 <span class="num">17</span></h2>
+
+<p>Claude Code 使用 <strong>React Ink</strong> 将 React 组件树渲染到终端——拥有组件化、状态管理、Hook 等 React 全部能力。<code>components/</code> 目录包含 <strong>389 个 TypeScript 文件、24,266 行代码</strong>，是整个代码库中最大的模块。</p>
+
+<div class="tip tip-key">
+  <strong>🔑 本章方法论：</strong>以下所有架构声明均源自 Harness 穷举分析——深读 <code>Messages.tsx</code>（833行）、<code>VirtualMessageList.tsx</code>（1082行）、<code>FullscreenLayout.tsx</code>（637行）、<code>ScrollKeybindingHandler.tsx</code>（1011行）、<code>Spinner.tsx</code>（561行）等核心文件的逐行解读。
+</div>
+
+<!-- ===== 17.1 React Compiler ===== -->
+<h3 id="ui-compiler">17.1 React Compiler 编译优化</h3>
+
+<p>Claude Code <strong>全量使用了 React Compiler</strong>（react/compiler-runtime），所有组件在编译阶段被自动 memo 化。这不是实验性特性——它是性能架构的基石。</p>
+
+<div class="collapsible">
+  <div class="collapsible-header" onclick="toggleCollapsible(this)"><span class="arrow">▶</span> _c() 编译器运行时的工作原理 <span class="tag tag-purple">App.tsx:1-55</span></div>
+  <div class="collapsible-body"><pre><code class="language-typescript">// 编译前（原始 TSX）：
+export function App({ getFpsMetrics, stats, initialState, children }) {
+  return (
+    &lt;FpsMetricsProvider getFpsMetrics={getFpsMetrics}&gt;
+      &lt;StatsProvider store={stats}&gt;
+        &lt;AppStateProvider initialState={initialState}&gt;
+          {children}
+        &lt;/AppStateProvider&gt;
+      &lt;/StatsProvider&gt;
+    &lt;/FpsMetricsProvider&gt;
+  )
+}
+
+// 编译后（React Compiler 输出）：
+export function App(t0) {
+  const $ = _c(9);  // ← 分配 9 个缓存槽位
+  const { getFpsMetrics, stats, initialState, children } = t0;
+  let t1;
+  if ($[0] !== children || $[1] !== initialState) {
+    // 只有 children 或 initialState 变了才重新创建子树
+    t1 = &lt;AppStateProvider ...&gt;{children}&lt;/AppStateProvider&gt;;
+    $[0] = children; $[1] = initialState; $[2] = t1;
+  } else {
+    t1 = $[2];  // ← 复用上次的 JSX 元素
+  }
+  // ...后续层级同理
+}
+// 效果：每个组件的每段 JSX 都被"按依赖精确 memo 化"
+// 开发者不需要手写 useMemo/useCallback——编译器自动处理</code></pre></div>
+</div>
+
+<p>但 React Compiler 并非万能——某些场景需要<strong>手动补充优化</strong>：</p>
+
+<div class="collapsible">
+  <div class="collapsible-header" onclick="toggleCollapsible(this)"><span class="arrow">▶</span> LogoHeader 的手动 React.memo 优化 <span class="tag tag-orange">Messages.tsx:47-76</span></div>
+  <div class="collapsible-body"><pre><code class="language-typescript">// 为什么需要手动 memo？因为 Ink 渲染器的 seenDirtyChild 级联问题。
+// LogoHeader 是 Messages 的第一个兄弟元素。如果它变脏，
+// renderChildren 的 seenDirtyChild 标志会级联到所有后续 MessageRow——
+// 所有消息都会从头重绘（不走 blit 快速路径）。
+// 在 2800 条消息的会话中，这是 150K+ 次写入/帧，CPU 跑满 100%。
+
+const LogoHeader = React.memo(function LogoHeader({ agentDefinitions }) {
+  return (
+    &lt;OffscreenFreeze&gt;  // 额外的离屏冻结优化
+      &lt;Box flexDirection="column" gap={1}&gt;
+        &lt;LogoV2 /&gt;
+        &lt;React.Suspense fallback={null}&gt;
+          &lt;StatusNotices agentDefinitions={agentDefinitions} /&gt;
+        &lt;/React.Suspense&gt;
+      &lt;/Box&gt;
+    &lt;/OffscreenFreeze&gt;
+  );
+});
+// memo 的 key 是 agentDefinitions——新的 messages 数组不会使 logo 失效
+// LogoV2/StatusNotices 内部通过 useAppState/useSettings 独立订阅更新</code></pre></div>
+</div>
+
+<div class="tip tip-info">
+  <strong>💡 编译器 + 手动的分工：</strong>React Compiler 处理「props 变 → JSX 变」的通用 memo 化；手动 <code>React.memo</code> 处理「渲染器层面的副作用级联」这种编译器无法理解的运行时行为。两者互补。
+</div>
+
+<!-- ===== 17.2 组件树 ===== -->
+<h3 id="ui-tree">17.2 组件树架构</h3>
+
+<p><code>App.tsx</code>（56行）是根组件——但它只是三层 Provider 的嵌套。真正的组件层级如下：</p>
+
+<div class="mermaid">
+graph TB
+    subgraph "Provider 层"
+        A["FpsMetricsProvider"] --> B["StatsProvider"]
+        B --> C["AppStateProvider"]
+    end
+    subgraph "REPL 层"
+        C --> D["REPL"]
+        D --> E["FullscreenLayout"]
+    end
+    subgraph "FullscreenLayout 分区"
+        E --> F["ScrollBox scrollable"]
+        E --> G["Bottom slot"]
+        E --> H["Modal overlay"]
+        F --> I["Messages"]
+        I --> J["VirtualMessageList"]
+        J --> K["MessageRow × N"]
+        G --> L["Spinner"]
+        G --> M["PromptInput"]
+        G --> N["PermissionRequest"]
+    end
+    style A fill:#6d28d9,stroke:#7c3aed,color:#fff
+    style E fill:#b45309,stroke:#f59e0b,color:#fff
+    style I fill:#0d9488,stroke:#14b8a6,color:#fff
+</div>
+
+<table>
+  <tr><th>组件</th><th>文件大小</th><th>职责</th></tr>
+  <tr><td><code>Messages.tsx</code></td><td><strong>833行 / 147KB</strong></td><td>消息规范化→过滤→重排→分组→折叠→渲染的完整管线</td></tr>
+  <tr><td><code>VirtualMessageList.tsx</code></td><td><strong>1082行 / 148KB</strong></td><td>虚拟滚动、全文搜索、Sticky Prompt 追踪、光标导航</td></tr>
+  <tr><td><code>FullscreenLayout.tsx</code></td><td><strong>637行 / 85KB</strong></td><td>Alt Buffer 全屏布局、ScrollBox、N new pill、Modal 画中画</td></tr>
+  <tr><td><code>ScrollKeybindingHandler.tsx</code></td><td><strong>1011行 / 149KB</strong></td><td>滚轮加速、编码器去抖、文本选择、OSC 52 剪贴板</td></tr>
+  <tr><td><code>Spinner.tsx</code></td><td><strong>561行 / 88KB</strong></td><td>加载动画、进度条、Token 预算显示、Teammate 树</td></tr>
+  <tr><td><code>MessageSelector.tsx</code></td><td><strong>830行 / 116KB</strong></td><td>消息撤销/恢复界面、文件历史 diff stats</td></tr>
+</table>
+
+<!-- ===== 17.3 Messages 管线 ===== -->
+<h3 id="ui-messages">17.3 Messages 消息处理管线</h3>
+
+<p><code>Messages.tsx</code>（833行）不是简单的渲染组件——它是一条完整的<strong>消息处理流水线</strong>，从原始消息到最终像素要经过 6 层变换：</p>
+
+<div class="flow-step"><span class="step-num">1</span> <strong>normalizeMessages()</strong>：将 API 原始消息拆分为单 content block 的 NormalizedMessage</div>
+<div class="flow-arrow">↓</div>
+<div class="flow-step"><span class="step-num">2</span> <strong>reorderMessagesInUI()</strong>：重排 Hook 结果、streaming tool_use，确保显示顺序与逻辑顺序一致</div>
+<div class="flow-arrow">↓</div>
+<div class="flow-step"><span class="step-num">3</span> <strong>applyGrouping()</strong>：将连续的同类工具调用（如 3 个 FileRead）分组为"读了 3 个文件"</div>
+<div class="flow-arrow">↓</div>
+<div class="flow-step"><span class="step-num">4</span> <strong>collapseReadSearchGroups()</strong> → <strong>collapseTeammateShutdowns()</strong> → <strong>collapseHookSummaries()</strong> → <strong>collapseBackgroundBashNotifications()</strong>：四层折叠</div>
+<div class="flow-arrow">↓</div>
+<div class="flow-step"><span class="step-num">5</span> <strong>filterForBriefTool()</strong> / <strong>dropTextInBriefTurns()</strong>：Brief 模式三层过滤</div>
+<div class="flow-arrow">↓</div>
+<div class="flow-step"><span class="step-num">6</span> <strong>computeSliceStart()</strong>：200 消息安全上限 + UUID 锚定切片</div>
+
+<h4>200 消息安全上限：防 OOM 核心机制</h4>
+
+<div class="collapsible">
+  <div class="collapsible-header" onclick="toggleCollapsible(this)"><span class="arrow">▶</span> UUID 锚定切片算法 <span class="tag tag-red">Messages.tsx:278-340</span></div>
+  <div class="collapsible-body"><pre><code class="language-typescript">// 问题：非虚拟滚动模式下，Ink 为每条消息挂载完整 Fiber 树（~250KB RSS/条）
+// 2000 条消息 → ~500MB Fiber + 3000 行 screen buffer
+// → GC 死亡螺旋（观测到 59GB RSS、14K mmap/munmap/sec）
+
+const MAX_MESSAGES_WITHOUT_VIRTUALIZATION = 200; // 安全上限
+const MESSAGE_CAP_STEP = 50;  // 量子步进（不是逐条推进）
+
+// 为什么不用 slice(-200)？
+// count-based 切片在每次追加时丢弃前端一条消息，
+// 导致终端 scrollback 内容整体偏移 → 每轮完整 terminal reset（CC-941）
+// 50 条步进 quantize 也有问题——compaction/collapse 会改变 .length
+
+// 解决：UUID 锚定
+type SliceAnchor = { uuid: string; idx: number } | null;
+
+function computeSliceStart(collapsed, anchorRef, cap, step) {
+  const anchor = anchorRef.current;
+  // 找到 anchor UUID 在当前数组中的位置
+  const anchorIdx = anchor ? collapsed.findIndex(m => m.uuid === anchor.uuid) : -1;
+  // UUID 找到 → 用它；UUID 丢失 → 降级到 stored index（clamped）
+  let start = anchorIdx >= 0 ? anchorIdx
+    : anchor ? Math.min(anchor.idx, Math.max(0, collapsed.length - cap))
+    : 0;
+  // 超出 cap+step 才推进窗口
+  if (collapsed.length - start > cap + step) {
+    start = collapsed.length - cap;
+  }
+  // 刷新锚点
+  anchorRef.current = { uuid: collapsed[start].uuid, idx: start };
+  return start;
+}</code></pre></div>
+</div>
+
+<h4>自定义 React.memo 比较器</h4>
+
+<div class="collapsible">
+  <div class="collapsible-header" onclick="toggleCollapsible(this)"><span class="arrow">▶</span> Messages 的 9 字段跳过 + 深度比较 <span class="tag tag-cyan">Messages.tsx:741-778</span></div>
+  <div class="collapsible-body"><pre><code class="language-typescript">// 默认 shallow compare 在流式传输中频繁失败。
+// 自定义比较器精细控制每个 prop 的比较策略：
+export const Messages = React.memo(MessagesImpl, (prev, next) => {
+  for (const key of Object.keys(prev)) {
+    // 跳过 9 个 stable ref/callback（身份变了但不影响渲染）
+    if (key === 'onOpenRateLimitOptions' || key === 'scrollRef'
+      || key === 'setCursor' || key === 'jumpRef' /* ...6 more */) continue;
+
+    if (prev[key] !== next[key]) {
+      // streamingToolUses：只比较 contentBlock 引用（不管外层数组重建）
+      if (key === 'streamingToolUses') {
+        if (p.length === n.length &&
+            p.every((item, i) => item.contentBlock === n[i]?.contentBlock))
+          continue;
+      }
+      // inProgressToolUseIDs：Set 深度相等
+      if (key === 'inProgressToolUseIDs') {
+        if (setsEqual(prev.inProgressToolUseIDs, next.inProgressToolUseIDs))
+          continue;
+      }
+      // tools：只比较 name 数组（Tool 对象可能被重建但名字不变）
+      if (key === 'tools') {
+        if (p.every((tool, i) => tool.name === n[i]?.name))
+          continue;
+      }
+      return false; // 真的变了，重渲染
+    }
+  }
+  return true; // 跳过重渲染
+});</code></pre></div>
+</div>
+
+<div class="tip tip-warn">
+  <strong>⚠️ 性能关键路径：</strong>管线中的「规范化→过滤→分组→折叠→buildLookups」都是 O(n) 操作。在 27K 消息的超大会话中，这些操作被<strong>拆离</strong>到独立 useMemo（不依赖 scroll offset），滚动时只运行便宜的切片操作。此前 renderRange 混在同一个 useMemo 中 → 每次滚动重建 6 个 Map + 4 轮 filter/map = ~50ms 分配/滚动 → 100-173ms GC 停顿。
+</div>
+
+<!-- ===== 17.4 VirtualMessageList ===== -->
+<h3 id="ui-virtual">17.4 VirtualMessageList 虚拟滚动引擎</h3>
+
+<p><code>VirtualMessageList.tsx</code>（1082行）是 Claude Code 为终端自研的虚拟滚动引擎——因为没有 DOM，没有 <code>react-virtuoso</code> 可用。</p>
+
+<table>
+  <tr><th>核心能力</th><th>实现方式</th><th>源码位置</th></tr>
+  <tr><td><strong>虚拟窗口</strong></td><td><code>useVirtualScroll(scrollRef, keys, columns)</code>——返回 range, topSpacer, measureRef</td><td><code>useVirtualScroll.ts</code></td></tr>
+  <tr><td><strong>增量 Key 数组</strong></td><td>追加模式 O(1)；仅在 compaction / clear 时重建</td><td><code>VirtualMessageList.tsx:312-324</code></td></tr>
+  <tr><td><strong>Sticky Prompt</strong></td><td>滚动上翻时，将当前对话轮的用户 prompt 固定到顶部</td><td><code>stickyPromptText()</code></td></tr>
+  <tr><td><strong>光标导航</strong></td><td>Shift+↑/↓ 选中消息，跳过零高度（折叠）项</td><td><code>cursorNavRef / MessageActionsNav</code></td></tr>
+  <tr><td><strong>全文搜索</strong></td><td><code>/</code> 触发 → indexOf 扫描 → scanElement 精确定位 → position-based 高亮</td><td><code>JumpHandle</code></td></tr>
+</table>
+
+<div class="collapsible">
+  <div class="collapsible-header" onclick="toggleCollapsible(this)"><span class="arrow">▶</span> 全文搜索四阶段引擎 <span class="tag tag-green">VirtualMessageList.tsx:696-810</span></div>
+  <div class="collapsible-body"><pre><code class="language-typescript">// 阶段 1: setSearchQuery(q) — 全量扫描
+for (let i = 0; i < msgs.length; i++) {
+  const text = extractSearchText(msgs[i]!);  // 预缓存 + toLowerCase
+  let pos = text.indexOf(lq);
+  let cnt = 0;
+  while (pos >= 0) { cnt++; pos = text.indexOf(lq, pos + lq.length); }
+  if (cnt > 0) { matches.push(i); prefixSum.push(prev + cnt); }
+}
+// ~10ms for 9K messages with cached lowered text
+
+// 阶段 2: jump(matches[ptr]) — 滚动到目标消息
+// 若目标已挂载 → s.scrollTo(getItemTop(i) - HEADROOM)
+// 若目标未挂载 → scrollToIndex(i) 先挂载再定位
+
+// 阶段 3: scanElement(el) — 精确像素扫描
+// 用主渲染树的 DOM 元素，paint 到临时 Screen
+// 返回 MatchPosition[] = [{ row, col, length }, ...]
+
+// 阶段 4: highlight(ord) — 位置高亮
+// positions 是消息相对坐标（row 0 = 消息顶部）
+// rowOffset = getItemTop(msgIdx) - scrollTop + viewportTop
+// 写入 setPositions → 触发渲染层的黄色高亮
+// 超出可视区域 → 先 scrollTo 再高亮</code></pre></div>
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header" onclick="toggleCollapsible(this)"><span class="arrow">▶</span> VirtualItem 的 GC 优化 <span class="tag tag-purple">VirtualMessageList.tsx:183-288</span></div>
+  <div class="collapsible-body"><pre><code class="language-typescript">// 性能剖析发现：per-item 闭包是 GC 热点
+// 3 closures × 60 mounted items × 10 commits/sec = 1800 closures/sec
+// → FunctionExecutable::finalizeUnconditionally 占 GC 时间的 16%
+
+// 解决：stable onClickK/onEnterK/onLeaveK 通过 itemKey 路由
+// VirtualItem 组件 NOT React.memo'd（因为 renderItem 捕获变化状态）
+// 但内部用 Compiler 的 _c() 缓存，只在 msg/idx 变化时重调 renderItem</code></pre></div>
+</div>
+
+<!-- ===== 17.5 FullscreenLayout ===== -->
+<h3 id="ui-fullscreen">17.5 FullscreenLayout 全屏终端布局</h3>
+
+<p>Claude Code 支持两种终端布局模式。全屏模式（内部用户默认开启）使用终端的 <strong>Alternate Screen Buffer + DECSTBM 滚动区域</strong>——这是和传统 CLI 的根本区别。</p>
+
+<table>
+  <tr><th>模式</th><th>触发</th><th>行为</th></tr>
+  <tr><td><span class="tag tag-green">全屏模式</span></td><td><code>CLAUDE_CODE_NO_FLICKER=1</code> 或内部用户默认</td><td>Alt Buffer + ScrollBox stickyScroll + 固定底部</td></tr>
+  <tr><td><span class="tag tag-blue">主屏模式</span></td><td>外部用户默认</td><td>顺序渲染，依赖原生终端滚动（native scrollback）</td></tr>
+</table>
+
+<div class="mermaid">
+graph TB
+    subgraph "FullscreenLayout 全屏模式"
+        A["StickyPromptHeader 1行固定"] --> B["ScrollBox flexGrow=1 stickyScroll"]
+        B --> C["Messages 消息区"]
+        B --> D["overlay 权限对话框"]
+        E["NewMessagesPill 浮动" ] -.-> B
+        F["Bottom slot flexShrink=0"]
+        F --> G["SuggestionsOverlay 命令建议"]
+        F --> H["DialogOverlay 对话框"]
+        F --> I["Spinner + PromptInput"]
+        J["ModalContext 画中画"] -.-> |"absolute bottom=0"| B
+    end
+    style A fill:#f59e0b,stroke:#d97706,color:#000
+    style B fill:#0d9488,stroke:#14b8a6,color:#fff
+    style E fill:#ef4444,stroke:#dc2626,color:#fff
+</div>
+
+<div class="collapsible">
+  <div class="collapsible-header" onclick="toggleCollapsible(this)"><span class="arrow">▶</span> pillVisible 的零渲染订阅 <span class="tag tag-orange">FullscreenLayout.tsx:310-329</span></div>
+  <div class="collapsible-body"><pre><code class="language-typescript">// 问题：滚动每帧都触发 — 如果 pill 的可见性用 useState，
+// 会导致 FullscreenLayout → REPL（6966行 + 22 个 useAppState 选择器）
+// 每帧重渲染
+
+// 解决：useSyncExternalStore + boolean 量化
+const subscribe = useCallback(
+  (listener) => scrollRef?.current?.subscribe(listener) ?? (() => {}),
+  [scrollRef]
+);
+
+const pillVisible = useSyncExternalStore(subscribe, () => {
+  const s = scrollRef?.current;
+  const dividerY = dividerYRef?.current;
+  if (!s || dividerY == null) return false;
+  // 布尔快照："viewport 底部是否在 divider 上方？"
+  return s.getScrollTop() + s.getPendingDelta() + s.getViewportHeight() < dividerY;
+});
+// Object.is 对 boolean → 只在 pill 真正该翻转时才重渲染
+// 不是每帧都渲染 — 是每次 threshold crossing 才渲染（~2次/滚动会话）</code></pre></div>
+</div>
+
+<h4>Unseen Divider 机制</h4>
+<p>当用户滚动上翻阅读历史时，新消息继续到达——Claude Code 实现了<strong>类 Slack 的 "N new messages" 分割线 + 浮动药丸</strong>：</p>
+
+<div class="collapsible">
+  <div class="collapsible-header" onclick="toggleCollapsible(this)"><span class="arrow">▶</span> useUnseenDivider — 新消息追踪 <span class="tag tag-cyan">FullscreenLayout.tsx:86-190</span></div>
+  <div class="collapsible-body"><pre><code class="language-typescript">// 状态设计：
+// dividerIndex — 切分线在 messages[] 中的索引（state，REPL 需要）
+// dividerYRef  — scrollHeight 快照（ref，FullscreenLayout 需要）
+// 两者分离：index 变化才触发 REPL 重渲染（~2次/会话）
+//            Y 快照被 pillVisible 的 useSyncExternalStore 读取（不触发重渲染）
+
+const onScrollAway = useCallback((handle) => {
+  // 防护：空/短会话不显示 pill
+  const max = Math.max(0, handle.getScrollHeight() - handle.getViewportHeight());
+  if (handle.getScrollTop() + handle.getPendingDelta() >= max) return;
+  // 只在第一次 scroll-away 时快照
+  if (dividerYRef.current === null) {
+    dividerYRef.current = handle.getScrollHeight();
+    setDividerIndex(countRef.current);
+  }
+}, []);
+
+// countUnseenAssistantTurns: 计算"转"而非"条"——
+// 一个 API 响应 = 多个 assistant 条目（tool_use + text），但只算 1 转
+// tool-only 条目（如 "⏺ Searched for 13 patterns"）不计数</code></pre></div>
+</div>
+
+<!-- ===== 17.6 Spinner ===== -->
+<h3 id="ui-spinner">17.6 Spinner 动画系统</h3>
+
+<p><code>Spinner.tsx</code>（561行）不是一个简单的加载指示器——它是一个<strong>多模态状态面板</strong>，根据不同的 AI 状态显示不同 UI：</p>
+
+<table>
+  <tr><th>SpinnerMode</th><th>显示内容</th><th>触发条件</th></tr>
+  <tr><td><code>'thinking'</code></td><td>动画 + "Thinking..." + elapsed time</td><td>等待 API 首个 token</td></tr>
+  <tr><td><code>'tool'</code></td><td>工具名 + 动画 shimmer 条</td><td>工具正在执行</td></tr>
+  <tr><td><code>'response'</code></td><td>token 计数 + token budget 进度</td><td>流式输出中</td></tr>
+  <tr><td><code>'idle'</code></td><td>隐藏</td><td>等待用户输入</td></tr>
+</table>
+
+<div class="collapsible">
+  <div class="collapsible-header" onclick="toggleCollapsible(this)"><span class="arrow">▶</span> Brief 模式分叉 + Teammate 树 <span class="tag tag-purple">Spinner.tsx:62-80</span></div>
+  <div class="collapsible-body"><pre><code class="language-typescript">// Spinner 有两个完全独立的 Hook 调用链：
+// 1. BriefSpinner — Kairos 助手模式的极简版（只显示 overrideMessage）
+// 2. SpinnerWithVerbInner — 标准版（~10 个额外 Hook）
+// 切换不能在运行时做——违反 Rules of Hooks。
+// 所以用 feature() 编译时常量做分叉：
+export function SpinnerWithVerb(props) {
+  const isBriefOnly = useAppState(s => s.isBriefOnly);
+  if (feature('KAIROS') && isBriefOnly && !viewingAgentTaskId) {
+    return &lt;BriefSpinner mode={props.mode} /&gt;;
+  }
+  return &lt;SpinnerWithVerbInner {...props} /&gt;;
+}
+
+// Teammate Spinner Tree：当 Coordinator Mode 激活时，
+// 显示所有运行中子 Agent 的进度树（TeammateSpinnerTree 组件）
+// 每个子 Agent 显示：名称 + 状态 + 耗时
+// TEARDROP_ASTERISK (✻) 标记活跃 Agent</code></pre></div>
+</div>
+
+<!-- ===== 17.7 ScrollKeybindingHandler ===== -->
+<h3 id="ui-scroll">17.7 ScrollKeybindingHandler 输入处理</h3>
+
+<p><code>ScrollKeybindingHandler.tsx</code>（1011行）处理终端中所有的滚动输入——包括键盘、鼠标滚轮、触控板、以及文本选择。这是一个极度复杂的输入处理层。</p>
+
+<table>
+  <tr><th>输入源</th><th>处理策略</th><th>关键参数</th></tr>
+  <tr><td><strong>原生终端滚轮</strong></td><td>线性加速斜坡</td><td>窗口 40ms，步进 0.3，上限 6×</td></tr>
+  <tr><td><strong>xterm.js 滚轮</strong></td><td>指数衰减曲线</td><td>1 event/notch，burst 检测 + gap cap</td></tr>
+  <tr><td><strong>编码器弹跳</strong></td><td>方向翻转检测 + 去抖</td><td>磨损光学编码器 28% 反向事件</td></tr>
+  <tr><td><strong>键盘滚动</strong></td><td>PgUp/PgDn/g/G + Ctrl+u/d/b/f</td><td>仅限 <code>isModal=true</code>（无文本输入竞争）</td></tr>
+  <tr><td><strong>鼠标选择</strong></td><td>SGR 鼠标追踪 + OSC 52 剪贴板</td><td>拖拽选择 → 自动复制</td></tr>
+</table>
+
+<div class="collapsible">
+  <div class="collapsible-header" onclick="toggleCollapsible(this)"><span class="arrow">▶</span> 滚轮加速算法 <span class="tag tag-orange">ScrollKeybindingHandler.tsx:34-62</span></div>
+  <div class="collapsible-body"><pre><code class="language-typescript">// 原生终端（Ghostty/iTerm2）和 xterm.js（VS Code/Cursor）的行为完全不同：
+
+// Ghostty: 每个 wheel notch → 3 个 SGR 事件（内部 3× 放大）
+// iTerm2:  类似，但有 "faster scroll" 设置
+// xterm.js: 每个 wheel notch → 恰好 1 个事件
+
+// 原生终端策略：硬窗口线性斜坡
+const WHEEL_ACCEL_WINDOW_MS = 40;   // 加速检测窗口
+const WHEEL_ACCEL_STEP = 0.3;       // 每次事件增加的加速度
+const WHEEL_ACCEL_MAX = 6;          // 最大倍率
+
+// 编码器弹跳检测：
+// 磨损光学编码器在快速滚动时产生反向 tick
+// 测量：Boris 的鼠标 28% 的事件是反向的（iTerm2, 2026-03-17）
+// 触控板产生零翻转（0/458）
+// 一旦检测到弹跳 → 证明是物理滚轮 → 激活指数衰减曲线
+
+// pendingScrollDelta 累加器 + 比例排空（在 render-node-to-output）
+// 处理大突发的平滑追赶</code></pre></div>
+</div>
+
+<!-- ===== 17.8 性能工程 ===== -->
+<h3 id="ui-perf">17.8 性能工程总结</h3>
+
+<table>
+  <tr><th>性能问题</th><th>解决方案</th><th>量化效果</th></tr>
+  <tr><td>组件重渲染</td><td><span class="tag tag-purple">React Compiler</span> _c() 自动 memo</td><td>开发者零手写 useMemo/useCallback</td></tr>
+  <tr><td>万级消息 OOM</td><td><span class="tag tag-green">虚拟滚动</span> + 200 消息安全上限</td><td>27K 消息会话不 GC 死亡螺旋</td></tr>
+  <tr><td>scrollback 偏移</td><td><span class="tag tag-blue">UUID 锚定切片</span></td><td>compaction/collapse 后位置稳定</td></tr>
+  <tr><td>滚动帧重渲染</td><td><span class="tag tag-orange">useSyncExternalStore</span> boolean 量化</td><td>pill 翻转 ~2次/会话 vs 60次/秒</td></tr>
+  <tr><td>Logo 级联脏标记</td><td><span class="tag tag-cyan">React.memo</span> + OffscreenFreeze</td><td>2800 条消息不触发 150K 次写入/帧</td></tr>
+  <tr><td>消息管线每帧重算</td><td>useMemo <span class="tag tag-red">拆离 renderRange</span></td><td>50ms → 0ms GC alloc per scroll</td></tr>
+  <tr><td>闭包 GC 压力</td><td>stable callback + key routing</td><td>16% GC 时间 → 近零</td></tr>
+  <tr><td>Key 数组 O(n) 重建</td><td>增量追加 + delta push</td><td>27K 消息 ~1MB churn → O(1)</td></tr>
+  <tr><td>搜索 per-keystroke 分配</td><td>toLowerCase 预缓存（WeakMap）</td><td>indexOf 零分配热循环</td></tr>
+  <tr><td>chunked 渲染 RSS</td><td>renderRange slice（20 chunks）</td><td>538 消息 −55% 峰值 RSS</td></tr>
+</table>
+
+<div class="tip tip-key">
+  <strong>🔑 一句话总结：</strong>Claude Code 的 UI 渲染层是<strong>"React in Terminal" 工程化的深水区</strong>——没有浏览器 DOM、没有 requestAnimationFrame、没有 CSS Layout。它用 Yoga 替代 CSS、用 DECSTBM 替代 overflow:scroll、用 React Compiler 替代手动 memo、用 UUID 锚定替代 index-based 切片。每一个设计决策都源于在 27K 消息超长会话中被 OOM / GC 死亡螺旋 / 终端渲染闪烁打败后的工程反思。
+</div>
+
+</section>
+
+<!-- ==================== §31 KEYBINDING SYSTEM ==================== -->
+
+<section class="section" id="keybinding-system">
+<h2 class="section-title"><span class="icon">⌨️</span> 键绑定系统 <span class="num">31</span></h2>
+
+<div class="tip tip-info">
+  <strong>🔬 方法论：</strong>本章对 <code>keybindings/</code>（14 文件）进行源码级深度分析。
+  核心文件：<code>defaultBindings.ts</code>（341行/12KB）· <code>resolver.ts</code>（245行/7KB）· <code>parser.ts</code>（204行/5KB）。
+</div>
+
+<p><code>keybindings/</code> 实现了 Claude Code 的 <strong>分层键绑定引擎</strong>——支持 14 个独立上下文、多键和弦（Chord）、跨平台修饰键映射、用户自定义覆盖，以及 VS Code 风格的 "last wins" 优先级规则。</p>
+
+<div class="stats-grid">
+  <div class="stat-card"><div class="value">14</div><div class="label">上下文数量</div></div>
+  <div class="stat-card"><div class="value">100+</div><div class="label">默认快捷键</div></div>
+  <div class="stat-card"><div class="value">Chord</div><div class="label">多键和弦支持</div></div>
+  <div class="stat-card"><div class="value">3 层</div><div class="label">Parser → Match → Resolve</div></div>
+</div>
+
+<h3 id="kb-contexts">31.1 上下文分层架构</h3>
+
+<p>键绑定引擎的核心设计是 <strong>上下文隔离</strong>——同一个物理按键在不同 UI 状态下触发不同动作。14 个上下文覆盖了 Claude Code 的全部交互场景：</p>
+
+<table>
+  <thead><tr><th>上下文</th><th>典型绑定</th><th>激活条件</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Global</strong></td><td>ctrl+c (interrupt) · ctrl+d (exit) · ctrl+l (redraw) · ctrl+r (history:search)</td><td>始终激活</td></tr>
+    <tr><td><strong>Chat</strong></td><td>enter (submit) · escape (cancel) · shift+tab (cycleMode) · ctrl+g (externalEditor)</td><td>输入框有焦点</td></tr>
+    <tr><td><strong>Autocomplete</strong></td><td>tab (accept) · escape (dismiss) · up/down (navigate)</td><td>自动补全弹出</td></tr>
+    <tr><td><strong>Settings</strong></td><td>j/k (navigate) · space (toggle) · enter (close) · / (search)</td><td>设置面板打开</td></tr>
+    <tr><td><strong>Confirmation</strong></td><td>y/n (yes/no) · tab (nextField) · ctrl+e (toggleExplanation)</td><td>权限确认弹窗</td></tr>
+    <tr><td><strong>Transcript</strong></td><td>ctrl+e (showAll) · q (exit)</td><td>转录查看模式</td></tr>
+    <tr><td><strong>HistorySearch</strong></td><td>ctrl+r (next) · tab (accept) · enter (execute)</td><td>历史搜索模式</td></tr>
+    <tr><td><strong>Task</strong></td><td>ctrl+b (background)</td><td>前台任务运行中</td></tr>
+    <tr><td><strong>Scroll</strong></td><td>pageup/down · wheelup/down · ctrl+shift+c (copy)</td><td>滚动视图激活</td></tr>
+    <tr><td><strong>DiffDialog</strong></td><td>left/right (切换源) · up/down (切换文件) · enter (查看详情)</td><td>Diff 对话框打开</td></tr>
+    <tr><td><strong>MessageSelector</strong></td><td>j/k/up/down (navigate) · shift+up/down (jump to top/bottom)</td><td>消息选择器激活</td></tr>
+    <tr><td><strong>MessageActions</strong></td><td>c (copy) · p (paste) · enter (action)</td><td>消息操作面板（feature flag）</td></tr>
+    <tr><td><strong>Select</strong></td><td>j/k (navigate) · enter (accept) · escape (cancel)</td><td>选择列表组件</td></tr>
+    <tr><td><strong>Plugin</strong></td><td>space (toggle) · i (install)</td><td>插件管理面板</td></tr>
+  </tbody>
+</table>
+
+<h3 id="kb-parser">31.2 Parser 解析层 (parser.ts)</h3>
+
+<p>Parser 将字符串描述的快捷键（如 <code>"ctrl+shift+k"</code>）解析为结构化的 <code>ParsedKeystroke</code> 对象，支持 6 类修饰键别名：</p>
+
+<table>
+  <thead><tr><th>修饰键类别</th><th>有效别名</th><th>标准化字段</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Control</strong></td><td>ctrl, control</td><td>ctrl: true</td></tr>
+    <tr><td><strong>Alt</strong></td><td>alt, opt, option</td><td>alt: true</td></tr>
+    <tr><td><strong>Shift</strong></td><td>shift</td><td>shift: true</td></tr>
+    <tr><td><strong>Meta</strong></td><td>meta</td><td>meta: true</td></tr>
+    <tr><td><strong>Super/Cmd</strong></td><td>cmd, command, super, win</td><td>super: true</td></tr>
+    <tr><td><strong>特殊键</strong></td><td>esc→escape, return→enter, space→" ", ↑↓←→</td><td>key 名标准化</td></tr>
+  </tbody>
+</table>
+
+<h4>Chord 和弦解析</h4>
+<ul>
+  <li><strong>parseChord("ctrl+k ctrl+s")</strong> → 按空格拆分为两个 ParsedKeystroke 的数组</li>
+  <li><strong>特例</strong>：单独的空格键 <code>' '</code> 被识别为 space 键绑定，不是分隔符</li>
+  <li><strong>显示适配</strong>：<code>keystrokeToDisplayString()</code> 会根据平台将 alt 显示为 opt (macOS) 或 alt (其他)</li>
+</ul>
+
+<h3 id="kb-resolver">31.3 Resolver 解析引擎 (resolver.ts)</h3>
+
+<p>Resolver 是键绑定系统的 <strong>运行时决策核心</strong>，支持单键和 Chord 两种解析模式：</p>
+
+<div class="mermaid">
+flowchart TB
+    INPUT["按键事件 (input, key)"] --> BUILD["buildKeystroke()"]
+    BUILD --> CHECK{"Chord 状态?"}
+    CHECK -->|pending=null| SINGLE["单键解析"]
+    CHECK -->|pending=[...keys]| CHORD["Chord 续段"]
+    SINGLE --> PREFIX{"触发更长 Chord 前缀?"}
+    PREFIX -->|yes| WAIT["chord_started\n等待下一键"]
+    PREFIX -->|no| EXACT{"精确匹配?"}
+    EXACT -->|match| ACTION["返回 action"]
+    EXACT -->|null action| UNBOUND["unbound"]
+    EXACT -->|no match| NONE["none"]
+    CHORD --> CHORDF{"完整 Chord 匹配?"}
+    CHORDF -->|yes| ACTION
+    CHORDF -->|prefix| WAIT
+    CHORDF -->|no| CANCEL["chord_cancelled"]
+    style WAIT fill:#f59e0b,stroke:#d97706
+    style ACTION fill:#10b981,stroke:#059669
+    style CANCEL fill:#ef4444,stroke:#dc2626
+</div>
+
+<h4>关键设计决策</h4>
+<ul>
+  <li><strong>"Last Wins" 规则</strong>：默认绑定先加载，用户 keybindings.json 后加载——同键同上下文的后定义覆盖先定义</li>
+  <li><strong>null 动作解绑</strong>：用户可以将动作设为 null 来禁用某个快捷键——<code>chordWinners</code> Map 追踪是否有非 null 的更长 Chord，null 覆盖不会让 chord-wait 误触发</li>
+  <li><strong>Alt/Meta 合并</strong>：传统终端无法区分 Alt 和 Meta，<code>keystrokesEqual()</code> 将两者视为同一个逻辑修饰键；Super (cmd/win) 保持独立——仅通过 Kitty 键盘协议到达</li>
+  <li><strong>Escape 修饰键修正</strong>：Ink 遗留行为将 escape 按键设置 key.meta=true，<code>buildKeystroke()</code> 特殊处理——对 escape 键本身忽略 meta 标志，否则 Chord 匹配会失败</li>
+</ul>
+
+<h3 id="kb-platform">31.4 跨平台兼容工程</h3>
+
+<table>
+  <thead><tr><th>问题</th><th>平台</th><th>解决方案</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Image Paste 快捷键</strong></td><td>Windows vs 其他</td><td>Windows 使用 alt+v（ctrl+v 被系统占用），其他平台使用 ctrl+v</td></tr>
+    <tr><td><strong>Mode Cycle 快捷键</strong></td><td>Windows Terminal 无 VT 模式</td><td>检测 Node ≥24.2.0 / Bun ≥1.2.23 的 VT 模式支持——不支持时 shift+tab 降级为 meta+m</td></tr>
+    <tr><td><strong>cmd+c / cmd+shift+f</strong></td><td>仅 Kitty 协议终端</td><td>同时注册 ctrl+shift+c 作为 portable fallback</td></tr>
+    <tr><td><strong>ctrl+c / ctrl+d</strong></td><td>全平台</td><td>保留键（reservedShortcuts.ts）——用户尝试覆盖时显示错误</td></tr>
+  </tbody>
+</table>
+
+<div class="tip tip-key">
+  <strong>🔑 一句话总结：</strong><code>keybindings/</code>（14 文件）实现了 Claude Code 的 <strong>分层键绑定引擎</strong>。<code>defaultBindings.ts</code> 定义了 14 个上下文 × 100+ 快捷键的完整映射表；<code>parser.ts</code> 支持 6 类修饰键别名 + Chord 和弦语法解析 + 跨平台显示适配；<code>resolver.ts</code> 提供单键/Chord 双模式解析 + "last wins" 优先级 + null 解绑 + Alt/Meta 合并 + Escape 修饰键修正。跨平台工程通过 VT 模式检测、键映射降级、Kitty 协议回退确保 Windows/macOS/Linux 全覆盖。
+</div>
+
+</section>
+
+<section class="section" id="ui-repl">
+<h2 class="section-title"><span class="icon">💻</span> REPL.tsx — 交互主界面（5005行） <span class="num">40</span></h2>
+
+<p><code>screens/REPL.tsx</code> 是 Claude Code 用户最直接接触的组件——
+  <strong>5005 行</strong>的 React Ink 组件，编排了从输入框到消息列表到权限弹窗的全部交互逻辑。</p>
+
+<h3 id="ui-repl-hooks">40.1 核心 Hook 矩阵</h3>
+<table>
+  <thead><tr><th>Hook</th><th>职责</th></tr></thead>
+  <tbody>
+    <tr><td><strong>useReplBridge</strong></td><td>115KB，REPL 的「大脑」——消息发送、query() 调用、会话管理</td></tr>
+    <tr><td><strong>useCanUseTool</strong></td><td>工具权限决策 + 用户确认弹窗</td></tr>
+    <tr><td><strong>useTypeahead</strong></td><td>1384行，多层输入补全（文件/命令/Agent/@mentions）</td></tr>
+    <tr><td><strong>useVoice</strong></td><td>1144行，语音输入 + 实时转录</td></tr>
+    <tr><td><strong>useVirtualScroll</strong></td><td>虚拟滚动 + 搜索高亮</td></tr>
+    <tr><td><strong>useAppState</strong></td><td>Zustand 全局状态订阅</td></tr>
+  </tbody>
+</table>
+
+<h3 id="ui-repl-flow">40.2 消息流水线</h3>
+<p>用户输入 → <code>useReplBridge.submit()</code> → <code>query()</code> →
+  流式 yield 消息 → <code>Messages.tsx</code> 规范化/过滤/分组 →
+  <code>VirtualMessageList</code> 虚拟滚动渲染 →
+  检测到 <code>tool_use</code> → <code>useCanUseTool</code> 弹出权限弹窗 →
+  用户确认/拒绝 → 继续 query 循环。</p>
+
+<h3 id="ui-repl-modes">40.3 多模式支持</h3>
+<ul>
+  <li><strong>Plan mode</strong>：只读分析模式（EnterPlanModeTool 触发）</li>
+  <li><strong>Fork mode</strong>：分叉对话（共享 System Prompt 缓存）</li>
+  <li><strong>Teammate mode</strong>：多 Agent 协作视图（Spinner 树）</li>
+  <li><strong>SSH mode</strong>：远程会话代理（消息桥接到远程 CLI）</li>
+</ul>
+
+<div class="tip tip-key">
+  <strong>🔑 架构洞察：</strong>REPL.tsx 和 print.ts 是 Claude Code 的「一体两面」——
+  前者用 React Ink 实现交互式 TUI，后者用 NDJSON 实现无头模式。
+  它们共享 <code>query()</code> 核心循环，但各自独立处理 UI 表现和 I/O 协议。
+</div>
+</section>
+
+</main>
+<button class="back-top" id="backTop" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button>
+<script src="js/main.js"></script>
+</body>
+</html>

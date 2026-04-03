@@ -1,0 +1,883 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>常量与命令系统 — Claude Code v2.1.88 架构深度解析</title>
+<meta name="description" content="基于 Source Map 逆向还原的 Claude Code 架构核心概念与源码解析">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-jsx.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-tsx.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+<script type="module">
+import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+mermaid.initialize({startOnLoad:true,theme:"dark",themeVariables:{primaryColor:"#6d28d9",primaryTextColor:"#e2e8f0",primaryBorderColor:"#7c3aed",lineColor:"#7c3aed",secondaryColor:"#1e1b4b",tertiaryColor:"#0f172a"}});
+</script>
+<style>
+
+
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#05050a;--bg2:#0a0a16;--surface:rgba(20,20,38,.5);--surface2:rgba(35,35,65,.6);--border:rgba(255,255,255,.08);--border-hover:rgba(139,92,246,.5);--text:#f8fafc;--text2:#94a3b8;--text3:#64748b;--accent:#8b5cf6;--accent2:#6d28d9;--accent3:#c084fc;--green:#10b981;--blue:#3b82f6;--orange:#f59e0b;--red:#ef4444;--pink:#ec4899;--cyan:#06b6d4;--sidebar-w:280px;--header-h:64px}
+html{scroll-behavior:smooth;scroll-padding-top:80px}
+body{font-family:'Inter',system-ui,sans-serif;background-color:var(--bg);background-image:radial-gradient(circle at 15% 0%,rgba(139,92,246,.15) 0,transparent 30%),radial-gradient(circle at 85% 10%,rgba(6,182,212,.1) 0,transparent 30%);background-attachment:fixed;color:var(--text);line-height:1.7;overflow-x:hidden}
+::-webkit-scrollbar{width:6px}
+::-webkit-scrollbar-track{background:rgba(0,0,0,.2)}
+::-webkit-scrollbar-thumb{background:var(--surface2);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:var(--accent)}
+a{color:var(--accent3);text-decoration:none;transition:color .2s}
+a:hover{color:var(--cyan)}
+code{font-family:'JetBrains Mono',monospace}
+/* Header */
+.header{position:fixed;top:0;left:0;right:0;height:var(--header-h);background:rgba(5,5,10,.6);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 24px;z-index:100;gap:16px}
+.header .logo{font-size:22px;font-weight:900;letter-spacing:-.5px;background:linear-gradient(135deg,#c084fc,#38bdf8,#818cf8);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.header .version{font-size:12px;padding:2px 10px;border-radius:99px;background:var(--surface);color:var(--accent3);border:1px solid var(--border);font-weight:600;box-shadow:inset 0 1px 0 rgba(255,255,255,.1)}
+.header .search-box{flex:1;max-width:400px;margin-left:auto}
+.header .search-box input{width:100%;padding:10px 16px;border-radius:12px;border:1px solid var(--border);background:var(--surface);backdrop-filter:blur(10px);color:var(--text);font-size:14px;outline:none;transition:all .3s ease;box-shadow:inset 0 1px 2px rgba(0,0,0,.2)}
+.header .search-box input:focus{border-color:var(--accent);background:rgba(20,20,40,.8);box-shadow:0 0 0 4px rgba(139,92,246,.1)}
+.menu-btn{display:none;background:none;border:none;color:var(--text);font-size:24px;cursor:pointer}
+/* Sidebar */
+.sidebar{position:fixed;left:0;top:var(--header-h);bottom:0;width:var(--sidebar-w);background:rgba(10,10,22,.6);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-right:1px solid var(--border);overflow-y:auto;padding:20px 0;z-index:90;transition:transform .3s cubic-bezier(.4,0,.2,1)}
+.sidebar .nav-group{margin-bottom:12px}
+.sidebar .nav-group-title{padding:10px 20px;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:rgba(255,255,255,.3)}
+.sidebar .nav-item{display:block;padding:8px 20px 8px 28px;font-size:13px;font-weight:500;color:var(--text2);transition:all .25s ease;border-left:3px solid transparent;cursor:pointer}
+.sidebar .nav-item:hover{color:#fff;background:linear-gradient(90deg,var(--surface),transparent)}
+.sidebar .nav-item.active{color:var(--accent3);border-left-color:var(--accent);background:linear-gradient(90deg,rgba(139,92,246,.1),transparent);text-shadow:0 0 8px rgba(192,132,252,.3)}
+/* Main */
+.main{margin-left:var(--sidebar-w);margin-top:var(--header-h);padding:40px 60px 80px;max-width:1040px}
+/* Sections */
+.section{margin-bottom:80px;animation:fadeIn .6s cubic-bezier(.16,1,.3,1)}
+@keyframes fadeIn{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:translateY(0)}}
+.section-title{font-size:32px;font-weight:900;letter-spacing:-.5px;margin-bottom:32px;padding-bottom:16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;position:relative}
+.section-title::after{content:'';position:absolute;left:0;bottom:-1px;height:1px;width:100px;background:linear-gradient(90deg,var(--accent),transparent)}
+.section-title .icon{font-size:32px;filter:drop-shadow(0 0 12px rgba(139,92,246,.4))}
+.section-title .num{font-size:13px;padding:4px 12px;border-radius:99px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;font-weight:700;box-shadow:0 4px 12px rgba(109,40,217,.3)}
+h3{font-size:22px;font-weight:800;letter-spacing:-.3px;margin:36px 0 16px;background:linear-gradient(135deg,#fff,#cbd5e1);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+h4{font-size:16px;font-weight:700;margin:24px 0 10px;color:var(--accent3)}
+p{margin-bottom:16px;color:var(--text2);font-size:15px}
+ul,ol{margin:12px 0 20px 24px;color:var(--text2);font-size:15px}
+li{margin-bottom:6px}
+li::marker{color:var(--accent)}
+strong{color:#fff;font-weight:600}
+/* Cards */
+.card{background:var(--surface);backdrop-filter:blur(16px);border:1px solid var(--border);border-radius:16px;padding:24px;margin:20px 0;transition:all .4s cubic-bezier(.16,1,.3,1);box-shadow:0 4px 20px rgba(0,0,0,.2),inset 0 1px 0 rgba(255,255,255,.05)}
+.card:hover{transform:translateY(-4px);border-color:var(--border-hover);box-shadow:0 12px 40px rgba(0,0,0,.4),0 0 20px rgba(139,92,246,.15),inset 0 1px 0 rgba(255,255,255,.1)}
+.card-title{font-size:18px;font-weight:800;margin-bottom:12px;color:#fff}
+/* Stats Grid */
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin:24px 0}
+.stat-card{background:var(--surface);backdrop-filter:blur(16px);border:1px solid var(--border);border-radius:16px;padding:24px;text-align:center;transition:all .4s ease;box-shadow:inset 0 1px 0 rgba(255,255,255,.02)}
+.stat-card:hover{transform:translateY(-4px) scale(1.02);border-color:var(--border-hover);background:linear-gradient(180deg,rgba(35,35,65,.8),rgba(20,20,38,.5))}
+.stat-card .value{font-size:36px;font-weight:900;letter-spacing:-1px;background:linear-gradient(135deg,#c084fc,#38bdf8);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;filter:drop-shadow(0 2px 8px rgba(56,189,248,.3))}
+.stat-card .label{font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--text3);margin-top:8px}
+/* Table */
+table{width:100%;border-collapse:separate;border-spacing:0;margin:24px 0;font-size:14px;border-radius:12px;overflow:hidden;border:1px solid var(--border);background:var(--surface)}
+th{background:rgba(255,255,255,.03);padding:14px 18px;text-align:left;font-weight:700;color:var(--accent3);border-bottom:1px solid var(--border)}
+td{padding:14px 18px;border-bottom:1px solid var(--border);color:var(--text2)}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:rgba(255,255,255,.02)}
+/* Code blocks / Collapsible */
+pre[class*="language-"]{border-radius:12px!important;margin:16px 0!important;border:1px solid var(--border)!important;font-size:13px!important;background:#0d0d16!important;box-shadow:inset 0 2px 10px rgba(0,0,0,.4)}
+.collapsible{margin:16px 0;border-radius:12px;overflow:hidden;border:1px solid var(--border);background:var(--surface);transition:border-color .3s;box-shadow:inset 0 1px 0 rgba(255,255,255,.05)}
+.collapsible:hover{border-color:var(--border-hover)}
+.collapsible-header{display:flex;align-items:center;gap:12px;padding:14px 20px;cursor:pointer;font-size:14px;font-weight:700;color:#fff;transition:all .3s;user-select:none;background:rgba(255,255,255,.02)}
+.collapsible-header:hover{background:rgba(255,255,255,.05)}
+.collapsible-header .arrow{transition:transform .3s cubic-bezier(.4,0,.2,1);font-size:12px;color:var(--text3)}
+.collapsible-header.open .arrow{transform:rotate(90deg);color:var(--accent3)}
+.collapsible-body{display:none;border-top:1px solid var(--border);background:#0d0d16}
+.collapsible-body.show{display:block;animation:slideDown .3s ease}
+@keyframes slideDown{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:translateY(0)}}
+.collapsible-body pre{margin:0!important;border:none!important;border-radius:0!important;box-shadow:none}
+/* Tags */
+.tag{display:inline-block;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:700;letter-spacing:.5px;margin:2px 4px 2px 0;text-transform:uppercase}
+.tag-purple{background:rgba(192,132,252,.15);color:#d8b4fe;border:1px solid rgba(192,132,252,.3)}
+.tag-green{background:rgba(16,185,129,.15);color:#6ee7b7;border:1px solid rgba(16,185,129,.3)}
+.tag-blue{background:rgba(59,130,246,.15);color:#93c5fd;border:1px solid rgba(59,130,246,.3)}
+.tag-orange{background:rgba(245,158,11,.15);color:#fcd34d;border:1px solid rgba(245,158,11,.3)}
+.tag-red{background:rgba(239,68,68,.15);color:#fca5a5;border:1px solid rgba(239,68,68,.3)}
+.tag-cyan{background:rgba(6,182,212,.15);color:#67e8f9;border:1px solid rgba(6,182,212,.3)}
+.tag-pink{background:rgba(236,72,153,.15);color:#f9a8d4;border:1px solid rgba(236,72,153,.3)}
+/* Mermaid */
+.mermaid{margin:24px 0;padding:24px;background:var(--surface);backdrop-filter:blur(10px);border:1px solid var(--border);border-radius:16px;overflow-x:auto;box-shadow:inset 0 1px 0 rgba(255,255,255,.05);transition:border-color .3s}
+.mermaid:hover{border-color:rgba(139,92,246,.3)}
+/* Tips */
+.tip{padding:16px 20px;border-radius:12px;margin:20px 0;font-size:14.5px;border:1px solid var(--border);border-left:4px solid;backdrop-filter:blur(10px)}
+.tip-info{background:rgba(59,130,246,.05);border-left-color:var(--blue);border-color:rgba(59,130,246,.2)}
+.tip-warn{background:rgba(245,158,11,.05);border-left-color:var(--orange);border-color:rgba(245,158,11,.2)}
+.tip-key{background:rgba(139,92,246,.05);border-left-color:var(--accent);border-color:rgba(139,92,246,.2);box-shadow:0 4px 20px rgba(139,92,246,.05)}
+/* Back to top */
+.back-top{position:fixed;bottom:32px;right:32px;width:48px;height:48px;border-radius:50%;background:linear-gradient(135deg,var(--accent2),var(--accent));color:#fff;border:none;font-size:22px;cursor:pointer;display:none;align-items:center;justify-content:center;box-shadow:0 8px 24px rgba(109,40,217,.4),inset 0 1px 0 rgba(255,255,255,.2);transition:all .3s cubic-bezier(.16,1,.3,1);z-index:99}
+.back-top:hover{transform:translateY(-6px);box-shadow:0 12px 32px rgba(109,40,217,.6),inset 0 1px 0 rgba(255,255,255,.3)}
+.back-top.show{display:flex}
+/* Responsive */
+@media(max-width:900px){
+.sidebar{transform:translateX(-100%)}
+.sidebar.open{transform:translateX(0)}
+.main{margin-left:0;padding:24px 20px 80px}
+.menu-btn{display:block}
+:root{--sidebar-w:260px}
+.section-title{font-size:26px}
+.stats-grid{grid-template-columns:1fr}
+}
+/* File tree */
+.file-tree{font-family:'JetBrains Mono',monospace;font-size:13px;background:rgba(10,10,16,.8);border:1px solid var(--border);border-radius:12px;padding:20px;margin:16px 0;line-height:1.9;box-shadow:inset 0 2px 10px rgba(0,0,0,.3)}
+.file-tree .dir{color:var(--accent3);font-weight:600}
+.file-tree .file{color:var(--text2)}
+.file-tree .comment{color:var(--text3);font-style:italic}
+/* Flow arrow */
+.flow-step{display:flex;align-items:center;gap:16px;margin:10px 0;padding:12px 20px;background:var(--surface);border:1px solid var(--border);border-radius:12px;font-size:14.5px;transition:transform .2s;box-shadow:inset 0 1px 0 rgba(255,255,255,.02)}
+.flow-step:hover{transform:translateX(4px);border-color:var(--border-hover)}
+.flow-step .step-num{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,var(--accent2),var(--accent));color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;flex-shrink:0;box-shadow:0 2px 8px rgba(109,40,217,.3)}
+.flow-arrow{text-align:center;color:var(--accent3);font-size:20px;margin:6px 0;opacity:.7}
+/* Inline code */
+:not(pre)>code{background:rgba(255,255,255,.05);padding:3px 8px;border-radius:6px;font-size:13px;color:#c084fc;border:1px solid rgba(255,255,255,.05)}
+
+
+</style>
+</head>
+<body>
+<header class="header">
+  <button class="menu-btn" onclick="document.querySelector('.sidebar').classList.toggle('open')">&#9776;</button>
+  <div class="logo"><a href="index.html">Claude Code 架构解析</a></div>
+  <span class="version">v2.1.88</span>
+  <div class="search-box"><input type="text" id="searchInput" placeholder="&#x1F50D; 搜索章节内容..." oninput="handleSearch(this.value)"></div>
+</header>
+<nav class="sidebar" id="sidebar">
+
+  <div class="nav-group">
+    <div class="nav-group-title">概览</div>
+    <a class="nav-item" href="index.html#overview">📋 项目概览</a>
+    <a class="nav-item" href="index.html#structure">📁 目录结构</a>
+    <a class="nav-item" href="index.html#arch">🏗️ 架构分层</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">核心引擎</div>
+    <a class="nav-item" href="core-engine.html#startup">🚀 启动流程</a>
+    <a class="nav-item" href="core-engine.html#tool-system">🔧 Tool 系统</a>
+    <a class="nav-item" href="core-engine.html#bash-security">🛡️ 安全沙箱</a>
+    <a class="nav-item" href="core-engine.html#query-loop">🔄 Query Loop</a>
+    <a class="nav-item" href="core-engine.html#query-engine">⚙️ QueryEngine</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">入口与引导</div>
+    <a class="nav-item" href="entrypoints.html#entrypoints">🚪 入口引导层</a>
+    <a class="nav-item" href="entrypoints.html#cli-bootstrap" style="padding-left:40px;font-size:12px;opacity:.7">↳ CLI Fast-Path</a>
+    <a class="nav-item" href="entrypoints.html#init-chain" style="padding-left:40px;font-size:12px;opacity:.7">↳ 初始化管线</a>
+    <a class="nav-item" href="entrypoints.html#mcp-server" style="padding-left:40px;font-size:12px;opacity:.7">↳ MCP Server</a>
+    <a class="nav-item" href="entrypoints.html#agent-sdk" style="padding-left:40px;font-size:12px;opacity:.7">↳ Agent SDK</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">子系统</div>
+    <a class="nav-item" href="subsystems.html#commands">💬 命令系统</a>
+    <a class="nav-item" href="subsystems.html#permissions">🔐 权限系统</a>
+    <a class="nav-item" href="subsystems.html#state">📦 状态管理</a>
+    <a class="nav-item" href="subsystems.html#api">🌐 API 通信</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">高级特性</div>
+    <a class="nav-item" href="advanced.html#coordinator">🤖 多Agent协调</a>
+    <a class="nav-item" href="advanced.html#mcp">🔌 MCP 集成</a>
+    <a class="nav-item" href="advanced.html#tasks">⚙️ 后台任务</a>
+    <a class="nav-item" href="advanced.html#plugins">📦 插件与技能</a>
+    <a class="nav-item" href="advanced.html#feature-flags">🚩 Feature Flags</a>
+    <a class="nav-item" href="context.html#context">🧠 上下文管理</a>
+    <a class="nav-item" href="context.html#ctx-search" style="padding-left:40px;font-size:12px;opacity:.7">↳ Grep vs RAG</a>
+    <a class="nav-item" href="context.html#ctx-memory" style="padding-left:40px;font-size:12px;opacity:.7">↳ 6层记忆体系</a>
+    <a class="nav-item" href="context.html#ctx-recall" style="padding-left:40px;font-size:12px;opacity:.7">↳ LLM 记忆召回</a>
+    <a class="nav-item" href="context.html#ctx-sysprompt" style="padding-left:40px;font-size:12px;opacity:.7">↳ System Prompt</a>
+    <a class="nav-item" href="context.html#ctx-decisions" style="padding-left:40px;font-size:12px;opacity:.7">↳ 设计决策表</a>
+    <a class="nav-item" href="ui-components.html#ui">🎨 UI 渲染</a>
+    <a class="nav-item" href="ui-components.html#ui-compiler" style="padding-left:40px;font-size:12px;opacity:.7">↳ React Compiler</a>
+    <a class="nav-item" href="ui-components.html#ui-messages" style="padding-left:40px;font-size:12px;opacity:.7">↳ 消息管线</a>
+    <a class="nav-item" href="ui-components.html#ui-virtual" style="padding-left:40px;font-size:12px;opacity:.7">↳ 虚拟滚动</a>
+    <a class="nav-item" href="ui-components.html#ui-fullscreen" style="padding-left:40px;font-size:12px;opacity:.7">↳ 全屏布局</a>
+    <a class="nav-item" href="ui-components.html#ui-perf" style="padding-left:40px;font-size:12px;opacity:.7">↳ 性能工程</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">基础设施</div>
+    <a class="nav-item" href="utils-infra.html#infra">🔩 基础设施</a>
+    <a class="nav-item" href="utils-infra.html#infra-session" style="padding-left:40px;font-size:12px;opacity:.7">↳ 会话持久化</a>
+    <a class="nav-item" href="utils-infra.html#infra-messages" style="padding-left:40px;font-size:12px;opacity:.7">↳ 消息系统</a>
+    <a class="nav-item" href="utils-infra.html#infra-hooks" style="padding-left:40px;font-size:12px;opacity:.7">↳ Hook 引擎</a>
+    <a class="nav-item" href="utils-infra.html#infra-config" style="padding-left:40px;font-size:12px;opacity:.7">↳ 配置与认证</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">React Hooks</div>
+    <a class="nav-item" href="hooks-system.html#hooks">🪝 React Hooks</a>
+    <a class="nav-item" href="hooks-system.html#hooks-input" style="padding-left:40px;font-size:12px;opacity:.7">↳ 输入管线</a>
+    <a class="nav-item" href="hooks-system.html#hooks-virtual" style="padding-left:40px;font-size:12px;opacity:.7">↳ 虚拟滚动</a>
+    <a class="nav-item" href="hooks-system.html#hooks-voice" style="padding-left:40px;font-size:12px;opacity:.7">↳ 语音子系统</a>
+    <a class="nav-item" href="hooks-system.html#hooks-collab" style="padding-left:40px;font-size:12px;opacity:.7">↳ 协作通信</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">渲染引擎</div>
+    <a class="nav-item" href="ink-engine.html#ink">🖼️ Ink 渲染引擎</a>
+    <a class="nav-item" href="ink-engine.html#ink-dom" style="padding-left:40px;font-size:12px;opacity:.7">↳ 自定义 DOM</a>
+    <a class="nav-item" href="ink-engine.html#ink-pipeline" style="padding-left:40px;font-size:12px;opacity:.7">↳ 渲染管线</a>
+    <a class="nav-item" href="ink-engine.html#ink-screen" style="padding-left:40px;font-size:12px;opacity:.7">↳ 屏幕缓冲区</a>
+    <a class="nav-item" href="ink-engine.html#ink-interact" style="padding-left:40px;font-size:12px;opacity:.7">↳ 全屏交互</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">插件系统</div>
+    <a class="nav-item" href="advanced.html#plugins">🔌 插件系统</a>
+    <a class="nav-item" href="advanced.html#plugins-loader" style="padding-left:40px;font-size:12px;opacity:.7">↳ 发现与加载</a>
+    <a class="nav-item" href="advanced.html#plugins-marketplace" style="padding-left:40px;font-size:12px;opacity:.7">↳ Marketplace</a>
+    <a class="nav-item" href="advanced.html#plugins-schema" style="padding-left:40px;font-size:12px;opacity:.7">↳ Schema 安全</a>
+    <a class="nav-item" href="advanced.html#plugins-lifecycle" style="padding-left:40px;font-size:12px;opacity:.7">↳ 验证生命周期</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">Bridge 通信</div>
+    <a class="nav-item" href="bridge.html#bridge">🌉 Bridge 通信</a>
+    <a class="nav-item" href="bridge.html#bridge-api" style="padding-left:40px;font-size:12px;opacity:.7">↳ 环境与轮询</a>
+    <a class="nav-item" href="bridge.html#bridge-repl" style="padding-left:40px;font-size:12px;opacity:.7">↳ REPL Bridge</a>
+    <a class="nav-item" href="bridge.html#bridge-messaging" style="padding-left:40px;font-size:12px;opacity:.7">↳ 消息路由</a>
+    <a class="nav-item" href="bridge.html#bridge-transport" style="padding-left:40px;font-size:12px;opacity:.7">↳ 传输与安全</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">核心服务层</div>
+    <a class="nav-item" href="services-deep.html#services">🔗 核心服务层</a>
+    <a class="nav-item" href="services-deep.html#svc-api" style="padding-left:40px;font-size:12px;opacity:.7">↳ API 通信核心</a>
+    <a class="nav-item" href="services-deep.html#svc-retry" style="padding-left:40px;font-size:12px;opacity:.7">↳ 重试引擎</a>
+    <a class="nav-item" href="services-deep.html#svc-errors" style="padding-left:40px;font-size:12px;opacity:.7">↳ 错误分类</a>
+    <a class="nav-item" href="services-deep.html#svc-mcp" style="padding-left:40px;font-size:12px;opacity:.7">↳ MCP 客户端</a>
+    <a class="nav-item" href="services-deep.html#svc-compact" style="padding-left:40px;font-size:12px;opacity:.7">↳ 上下文压缩</a>
+    <a class="nav-item" href="services-deep.html#svc-cache" style="padding-left:40px;font-size:12px;opacity:.7">↳ 缓存检测</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">工具系统</div>
+    <a class="nav-item" href="tools-deep.html#tools-system">🛠️ 工具系统</a>
+    <a class="nav-item" href="tools-deep.html#tools-bash" style="padding-left:40px;font-size:12px;opacity:.7">↳ BashTool 深剖</a>
+    <a class="nav-item" href="tools-deep.html#tools-panorama" style="padding-left:40px;font-size:12px;opacity:.7">↳ 38 工具全景</a>
+    <a class="nav-item" href="tools-deep.html#tools-client" style="padding-left:40px;font-size:12px;opacity:.7">↳ 多云客户端</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">权限与安全</div>
+    <a class="nav-item" href="tools-deep.html#perm-engine">🛡️ 权限决策引擎</a>
+    <a class="nav-item" href="tools-deep.html#perm-pipeline" style="padding-left:40px;font-size:12px;opacity:.7">↳ 决策管线</a>
+    <a class="nav-item" href="tools-deep.html#perm-yolo" style="padding-left:40px;font-size:12px;opacity:.7">↳ Auto Mode 分类器</a>
+    <a class="nav-item" href="tools-deep.html#perm-modes" style="padding-left:40px;font-size:12px;opacity:.7">↳ 权限模式</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">常量与命令</div>
+    <a class="nav-item" href="config-cmd.html#config-cmd">📜 常量与命令</a>
+    <a class="nav-item" href="config-cmd.html#config-constants" style="padding-left:40px;font-size:12px;opacity:.7">↳ 常量系统</a>
+    <a class="nav-item" href="config-cmd.html#config-commands" style="padding-left:40px;font-size:12px;opacity:.7">↳ 命令系统</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">Agent 与状态</div>
+    <a class="nav-item" href="agent-coord.html#agent-coord">🤖 Agent 协调层</a>
+    <a class="nav-item" href="agent-coord.html#agent-lifecycle" style="padding-left:40px;font-size:12px;opacity:.7">↳ 生命周期</a>
+    <a class="nav-item" href="agent-coord.html#agent-modes" style="padding-left:40px;font-size:12px;opacity:.7">↳ 多智能体模式</a>
+    <a class="nav-item" href="subsystems.html#state-ctx">📊 状态与上下文</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">CLI 与运行时</div>
+    <a class="nav-item" href="cli-transport.html#cli-transport">🖥️ CLI 与传输层</a>
+    <a class="nav-item" href="analytics-ff.html#analytics-ff">📈 分析与特性开关</a>
+    <a class="nav-item" href="model-shell.html#model-shell">🔧 模型与 Shell</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">类型与任务</div>
+    <a class="nav-item" href="types-tasks.html#type-system">📝 类型系统</a>
+    <a class="nav-item" href="types-tasks.html#task-migration">⚙️ 任务与迁移</a>
+  </div>
+
+</nav>
+<main class="main" id="mainContent">
+
+<section class="section" id="config-cmd">
+<h2 class="section-title"><span class="icon">📜</span> 常量配置与命令系统 <span class="num">26</span></h2>
+
+<p>Claude Code 的 <code>constants/</code>（21 文件）定义了产品的所有硬编码配置，而 <code>commands/</code>（86 子目录 + 15 文件）实现了全部斜杠命令。</p>
+
+<div class="stats-grid">
+  <div class="stat-card"><div class="value">21</div><div class="label">常量文件数</div></div>
+  <div class="stat-card"><div class="value">54KB</div><div class="label">prompts.ts 行数</div></div>
+  <div class="stat-card"><div class="value">86+</div><div class="label">斜杠命令数</div></div>
+  <div class="stat-card"><div class="value">116KB</div><div class="label">insights.ts 最大文件</div></div>
+</div>
+
+<!-- ── 26.1 常量系统 ── -->
+<h3 id="config-constants">26.1 常量系统</h3>
+
+<table>
+  <thead><tr><th>文件</th><th>体积</th><th>职责</th><th>关键内容</th></tr></thead>
+  <tbody>
+    <tr><td><strong>prompts.ts</strong></td><td>54KB</td><td>System Prompt 模板库</td><td>所有工具描述 + 安全约束 + 行为规范</td></tr>
+    <tr><td><strong>outputStyles.ts</strong></td><td>10KB</td><td>输出风格定义</td><td>多种预设输出模板（concise/detailed/code-only）</td></tr>
+    <tr><td><strong>oauth.ts</strong></td><td>9KB</td><td>OAuth 常量</td><td>Client ID、Redirect URI、Scopes、Discovery URL</td></tr>
+    <tr><td><strong>github-app.ts</strong></td><td>5KB</td><td>GitHub App 配置</td><td>安装 URL、App Slug、权限范围</td></tr>
+    <tr><td><strong>tools.ts</strong></td><td>5KB</td><td>工具常量</td><td>工具名称映射、默认工具集、工具阈值</td></tr>
+    <tr><td><strong>system.ts</strong></td><td>4KB</td><td>系统阈值</td><td>MAX_TOKENS、超时常量、文件大小限制</td></tr>
+    <tr><td><strong>apiLimits.ts</strong></td><td>3KB</td><td>API 限制</td><td>token 上限、速率限制、模型能力矩阵</td></tr>
+    <tr><td><strong>betas.ts</strong></td><td>2KB</td><td>Beta Header 常量</td><td>MAX_TOKEN、FAST_MODE、TOOL_SEARCH 等 beta 标识</td></tr>
+    <tr><td><strong>xml.ts</strong></td><td>3KB</td><td>XML 解析常量</td><td>标签名、分界符、正则模式</td></tr>
+    <tr><td><strong>spinnerVerbs.ts</strong></td><td>3KB</td><td>Spinner 动词库</td><td>50+ 动态加载提示词（"Thinking…"、"Analyzing…"）</td></tr>
+    <tr><td><strong>files.ts</strong></td><td>3KB</td><td>文件路径常量</td><td>配置文件名、缓存目录、会话存储</td></tr>
+  </tbody>
+</table>
+
+<!-- ── 26.2 命令系统 ── -->
+<h3 id="config-commands">26.2 命令系统</h3>
+
+<p><code>commands/</code> 目录包含 <strong>86+ 个斜杠命令</strong>（<code>/help</code>、<code>/compact</code>、<code>/plugin</code> 等），每个命令是一个独立子目录。重量级命令包括：</p>
+
+<table>
+  <thead><tr><th>命令</th><th>文件</th><th>体积</th><th>功能</th></tr></thead>
+  <tbody>
+    <tr><td><strong>/insights</strong></td><td>insights.ts</td><td>116KB</td><td>会话分析仪表盘（token/cost/工具统计）</td></tr>
+    <tr><td><strong>/ultraplan</strong></td><td>ultraplan.tsx</td><td>67KB</td><td>多步骤规划引擎（JSX 交互 UI）</td></tr>
+    <tr><td><strong>/install</strong></td><td>install.tsx</td><td>39KB</td><td>插件/MCP/技能安装向导</td></tr>
+    <tr><td><strong>/init</strong></td><td>init.ts</td><td>21KB</td><td>CLAUDE.md 初始化向导</td></tr>
+    <tr><td><strong>/plugin</strong></td><td>plugin/ (17文件)</td><td>多文件</td><td>插件完整生命周期管理</td></tr>
+    <tr><td><strong>/install-github-app</strong></td><td>14文件</td><td>多文件</td><td>GitHub App 安装与 OAuth 流程</td></tr>
+    <tr><td><strong>/security-review</strong></td><td>security-review.ts</td><td>13KB</td><td>安全审计报告生成</td></tr>
+    <tr><td><strong>/compact</strong></td><td>compact/</td><td>多文件</td><td>上下文压缩（触发 apiMicrocompact）</td></tr>
+    <tr><td><strong>/share</strong></td><td>share/</td><td>多文件</td><td>会话导出与分享</td></tr>
+    <tr><td><strong>/bridge</strong></td><td>bridge/</td><td>多文件</td><td>远程 Bridge 管理</td></tr>
+  </tbody>
+</table>
+
+<h4>命令分类</h4>
+<table>
+  <thead><tr><th>类别</th><th>代表命令</th><th>数量</th></tr></thead>
+  <tbody>
+    <tr><td><strong>会话管理</strong></td><td>/compact, /resume, /rewind, /session, /rename, /clear</td><td>6+</td></tr>
+    <tr><td><strong>插件与扩展</strong></td><td>/plugin, /install, /mcp, /skills, /reload-plugins</td><td>5+</td></tr>
+    <tr><td><strong>配置与认证</strong></td><td>/config, /login, /logout, /permissions, /model</td><td>5+</td></tr>
+    <tr><td><strong>诊断与分析</strong></td><td>/insights, /stats, /cost, /usage, /doctor</td><td>5+</td></tr>
+    <tr><td><strong>开发工具</strong></td><td>/init, /review, /diff, /commit, /branch, /issue, /pr_comments</td><td>7+</td></tr>
+    <tr><td><strong>规划与任务</strong></td><td>/ultraplan, /plan, /tasks, /agents</td><td>4+</td></tr>
+    <tr><td><strong>UI 与体验</strong></td><td>/theme, /voice, /vim, /keybindings, /output-style, /stickers</td><td>6+</td></tr>
+    <tr><td><strong>远程与协作</strong></td><td>/bridge, /mobile, /remote-setup, /desktop, /chrome</td><td>5+</td></tr>
+    <tr><td><strong>ant-only 内部</strong></td><td>/ant-trace, /mock-limits, /heapdump, /debug-tool-call, /ctx_viz</td><td>5+</td></tr>
+  </tbody>
+</table>
+
+<div class="tip tip-key">
+  <strong>🔑 一句话总结：</strong><code>constants/</code> + <code>commands/</code> 是 Claude Code 的 <strong>配置基座与交互入口</strong>。21 个常量文件以 <code>prompts.ts</code>（54KB）为核心，定义了全部 System Prompt 模板、安全约束和行为规范；86+ 个斜杠命令覆盖了会话管理、插件扩展、配置认证、诊断分析、开发工具、规划任务、UI 体验、远程协作 9 大类场景，其中 <code>/insights</code>（116KB）提供完整的会话分析仪表盘，<code>/ultraplan</code>（67KB）实现多步骤规划 JSX UI。
+</div>
+
+</section>
+
+<!-- ==================== §32 INSTALL-GITHUB-APP ==================== -->
+
+<section class="section" id="github-app">
+<h2 class="section-title"><span class="icon">🐙</span> GitHub App 安装向导 <span class="num">32</span></h2>
+
+<div class="tip tip-info">
+  <strong>🔬 方法论：</strong>本章对 <code>commands/install-github-app/</code>（14 文件 / 587+ 行核心）进行源码级深度分析。
+  主文件：<code>install-github-app.tsx</code>（587行 / 49KB），使用 React Ink TSX 构建终端交互 UI。
+</div>
+
+<p><code>/install-github-app</code> 是 Claude Code 中最复杂的命令之一——它用 <strong>React Ink TSX 组件</strong>在终端中实现了完整的 GitHub App 安装向导，
+  包含 7 步状态机、OAuth 授权、GitHub API 集成和多级错误恢复。</p>
+
+<div class="stats-grid">
+  <div class="stat-card"><div class="value">14</div><div class="label">源文件数</div></div>
+  <div class="stat-card"><div class="value">587</div><div class="label">主文件行数</div></div>
+  <div class="stat-card"><div class="value">7</div><div class="label">状态机步骤</div></div>
+  <div class="stat-card"><div class="value">TSX</div><div class="label">React Ink UI</div></div>
+</div>
+
+<h3 id="github-app-flow">32.1 7 步状态机</h3>
+
+<div class="mermaid">
+flowchart TB
+    S0["DETECT\n检测登录状态"] --> S1{已登录?}
+    S1 -->|no| LOGIN["跳转 /login\n获取 OAuth Token"]
+    S1 -->|yes| S2["LIST_ORGS\nGitHub API 获取组织列表"]
+    LOGIN --> S2
+    S2 --> S3["PICK_TARGET\n用户选择: 组织 or 个人账号"]
+    S3 --> S4{"已安装?"}
+    S4 -->|yes| DONE["SUCCESS\n显示已安装提示"]
+    S4 -->|no| S5["CONFIRM_INSTALL\n展示权限范围 + 确认"]
+    S5 --> S6["OPEN_BROWSER\n打开 GitHub 安装页"]
+    S6 --> S7["POLL_STATUS\n轮询安装完成状态"]
+    S7 --> |超时/失败| RETRY["RETRY\n提供重试选项"]
+    S7 --> |成功| DONE
+    RETRY --> S6
+    style LOGIN fill:#f59e0b,stroke:#d97706
+    style DONE fill:#10b981,stroke:#059669
+    style RETRY fill:#ef4444,stroke:#dc2626
+</div>
+
+<h4>状态转换表</h4>
+<table>
+  <thead><tr><th>状态</th><th>UI 渲染</th><th>关键 API</th><th>错误处理</th></tr></thead>
+  <tbody>
+    <tr><td><strong>DETECT</strong></td><td>Spinner + "检查认证…"</td><td>hasValidAuthentication()</td><td>API 不可达 → 显示错误 + 退出按钮</td></tr>
+    <tr><td><strong>LIST_ORGS</strong></td><td>Spinner + "加载组织…"</td><td>github/listUserOrgs() + listInstallations()</td><td>403 → 提示重新授权；网络错误 → 重试</td></tr>
+    <tr><td><strong>PICK_TARGET</strong></td><td>CustomSelect 列表</td><td>无（纯 UI 交互）</td><td>空列表 → 显示 "无可用组织"</td></tr>
+    <tr><td><strong>CONFIRM_INSTALL</strong></td><td>权限范围表 + y/n 确认</td><td>无</td><td>用户拒绝 → 返回 PICK_TARGET</td></tr>
+    <tr><td><strong>OPEN_BROWSER</strong></td><td>"正在打开浏览器…"</td><td>open(installUrl) 系统调用</td><td>浏览器打开失败 → 显示手动 URL</td></tr>
+    <tr><td><strong>POLL_STATUS</strong></td><td>Spinner + 进度条</td><td>installStatus() 轮询（3s 间隔，60 次上限）</td><td>超时 → RETRY；HTTP 500 → 忽略并继续轮询</td></tr>
+    <tr><td><strong>SUCCESS</strong></td><td>✅ 完成 + 下一步指引</td><td>无</td><td>—</td></tr>
+  </tbody>
+</table>
+
+<h3 id="github-app-arch">32.2 React Ink 组件架构</h3>
+
+<p>整个安装向导是一个 <strong>单一 TSX 组件</strong>，内部通过 <code>useState</code> 管理状态机步骤。关键架构模式：</p>
+
+<ul>
+  <li><strong>CustomSelect 复用</strong>：组织/账号选择器复用项目全局的 CustomSelect 组件——支持 j/k 导航、搜索过滤、高亮选中</li>
+  <li><strong>状态机封装</strong>：每个步骤是 <code>switch(step)</code> 中的一个分支，返回独立的 JSX 子树——避免条件渲染的 Hook 规则违背</li>
+  <li><strong>副作用隔离</strong>：所有 GitHub API 调用都在 <code>useEffect</code> 中执行，使用 <code>AbortController</code> 处理组件卸载时的请求取消</li>
+  <li><strong>错误边界</strong>：每个 API 调用包裹 try-catch，错误写入 <code>errorState</code>，渲染统一的错误 UI（红色 Box + 操作建议）</li>
+</ul>
+
+<h4>GitHub API 集成层</h4>
+<table>
+  <thead><tr><th>API</th><th>端点</th><th>用途</th></tr></thead>
+  <tbody>
+    <tr><td><strong>listUserOrgs</strong></td><td>GET /user/orgs</td><td>获取用户所属的 GitHub 组织列表</td></tr>
+    <tr><td><strong>listInstallations</strong></td><td>GET /user/installations</td><td>检查 App 在哪些组织已安装</td></tr>
+    <tr><td><strong>installStatus</strong></td><td>内部 API 轮询</td><td>轮询安装完成状态（3 秒间隔）</td></tr>
+    <tr><td><strong>getInstallUrl</strong></td><td>构造 URL</td><td>生成 GitHub App 安装/授权 URL（带 state 参数）</td></tr>
+  </tbody>
+</table>
+
+<h3 id="github-app-security">32.3 安全设计</h3>
+
+<ul>
+  <li><strong>OAuth Token 验证</strong>：安装前验证 Token 有效性——过期 Token 会导致 GitHub API 403，触发重新登录流程</li>
+  <li><strong>State 参数</strong>：安装 URL 中的 <code>state</code> 参数使用随机 UUID，防止 CSRF 攻击</li>
+  <li><strong>权限最小化</strong>：安装确认页面明确展示 App 请求的所有权限范围（read/write 级别），用户知情同意</li>
+  <li><strong>轮询限流</strong>：60 次 × 3 秒 = 最长 3 分钟轮询窗口，防止无限轮询消耗 API 配额</li>
+</ul>
+
+<div class="tip tip-key">
+  <strong>🔑 一句话总结：</strong><code>install-github-app/</code>（14 文件）实现了 Claude Code 的 <strong>GitHub App 终端安装向导</strong>。<code>install-github-app.tsx</code>（587行）用 React Ink TSX 构建了 7 步状态机交互 UI（登录检测 → 组织列表 → 目标选择 → 权限确认 → 浏览器打开 → 轮询等待 → 完成引导）；集成了 GitHub REST API（组织列表 + 安装检查 + 状态轮询）；安全设计包括 OAuth Token 验证、CSRF state 参数、权限知情同意和轮询限流（180 秒超时）。
+</div>
+
+</section>
+
+<!-- ==================== §34 COMMAND DEEP DIVES ==================== -->
+
+<section class="section" id="cmd-plugin">
+<h2 class="section-title"><span class="icon">🧩</span> /plugin — 插件生态管理器（7301行/17文件） <span class="num">34</span></h2>
+
+<p><code>/plugin</code>（别名 <code>/plugins</code>、<code>/marketplace</code>）是 Claude Code 命令系统中 <strong>最复杂的子系统</strong>——
+  7301 行 TSX/TS 代码构建了一个完整的「终端内 App Store」，支持插件发现、安装、配置、
+  启用/禁用、更新、卸载、以及 Marketplace 管理。</p>
+
+<h3 id="cmd-plugin-arch">34.1 ManagePlugins — 核心管理组件（2214行）</h3>
+
+<p><code>ManagePlugins.tsx</code>（2214行）是插件管理的主界面组件。它实现了一个 <strong>统一列表视图</strong>，
+  将 Plugins + MCP Servers + 错误插件 + 被标记插件合并为一个可搜索、可分页的列表。</p>
+
+<table>
+  <thead><tr><th>视图状态</th><th>功能</th><th>关键交互</th></tr></thead>
+  <tbody>
+    <tr><td><strong>plugin-list</strong></td><td>统一列表：按 scope 分组排列</td><td>搜索过滤 + j/k 导航 + 分页</td></tr>
+    <tr><td><strong>plugin-details</strong></td><td>插件详情：组件清单 + 操作菜单</td><td>enable/disable/uninstall/update</td></tr>
+    <tr><td><strong>configuring</strong></td><td>MCPB 配置流程</td><td>多步表单 + schema 驱动 UI</td></tr>
+    <tr><td><strong>plugin-options</strong></td><td>插件选项配置</td><td>PluginOptionSchema 驱动</td></tr>
+    <tr><td><strong>mcp-detail</strong></td><td>MCP Server 详情</td><td>连接状态 + 工具列表</td></tr>
+    <tr><td><strong>mcp-tool-detail</strong></td><td>MCP 工具详情</td><td>Schema + 描述 + 权限</td></tr>
+    <tr><td><strong>flagged-detail</strong></td><td>被标记/下架插件</td><td>查看原因 + 移除 + 48h 自动清理</td></tr>
+    <tr><td><strong>failed-plugin-details</strong></td><td>加载失败插件</td><td>错误信息 + 修复建议</td></tr>
+  </tbody>
+</table>
+
+<h4>Scope 优先级排序</h4>
+<table>
+  <thead><tr><th>顺序</th><th>Scope</th><th>来源</th><th>权限</th></tr></thead>
+  <tbody>
+    <tr><td>-1</td><td><strong>flagged</strong></td><td>安全系统标记</td><td>只读（只能 dismiss）</td></tr>
+    <tr><td>0</td><td><strong>project</strong></td><td>.claude/plugins/</td><td>项目级启用/禁用</td></tr>
+    <tr><td>1</td><td><strong>local</strong></td><td>--plugin-dir 参数</td><td>会话级</td></tr>
+    <tr><td>2</td><td><strong>user</strong></td><td>~/.claude/plugins/</td><td>全局</td></tr>
+    <tr><td>3</td><td><strong>enterprise</strong></td><td>组织策略</td><td>管理员控制</td></tr>
+    <tr><td>4</td><td><strong>managed</strong></td><td>policySettings 强制</td><td>不可修改</td></tr>
+    <tr><td>5</td><td><strong>dynamic</strong></td><td>运行时动态添加</td><td>会话级</td></tr>
+    <tr><td>6</td><td><strong>builtin</strong></td><td>内置插件定义</td><td>不可卸载</td></tr>
+  </tbody>
+</table>
+
+<h3 id="cmd-plugin-marketplace">34.2 Marketplace 生态</h3>
+
+<p>插件系统支持 <strong>多 Marketplace</strong> 架构。每个 Marketplace 是一个注册表（JSON manifest），
+  包含插件元数据、版本信息、安全审计状态。</p>
+
+<ul>
+  <li><strong>BrowseMarketplace.tsx (801行)</strong>：浏览和搜索 marketplace 中的可用插件</li>
+  <li><strong>ManageMarketplaces.tsx (837行)</strong>：添加/移除/刷新 marketplace 源</li>
+  <li><strong>DiscoverPlugins.tsx (780行)</strong>：智能推荐引擎——根据项目类型和使用模式推荐插件</li>
+  <li><strong>AddMarketplace.tsx (161行)</strong>：添加自定义 marketplace URL</li>
+</ul>
+
+<h3 id="cmd-plugin-security">34.3 安全合规</h3>
+<ul>
+  <li><strong>策略阻断</strong>：<code>isPluginBlockedByPolicy()</code> 检查组织策略，被阻断的插件不出现在 UI 中</li>
+  <li><strong>安全标记</strong>：<code>getFlaggedPlugins()</code> 跟踪被下架/标记的插件，48 小时后自动清理</li>
+  <li><strong>信任警告</strong>：<code>PluginTrustWarning.tsx</code> 对非官方 marketplace 插件显示信任提示</li>
+  <li><strong>数据清理</strong>：卸载时提示清理插件数据目录（<code>getPluginDataDirSize()</code> 计算占用空间）</li>
+</ul>
+</section>
+
+<section class="section" id="cmd-mcp">
+<h2 class="section-title"><span class="icon">🔌</span> /mcp — MCP 服务器管理 <span class="num">34.4</span></h2>
+
+<p><code>/mcp</code> 命令（4 文件）提供 MCP 服务器的交互式管理。支持 <strong>4 种传输协议</strong>
+  （stdio/SSE/HTTP/claude.ai proxy），每种协议有独立的配置 UI 和连接管理。核心功能包括：
+  服务器添加/移除/重启、工具授权管理（per-tool allow/deny）、资源浏览、连接状态监控。
+  所有 MCP 配置持久化到 <code>.claude/mcp.json</code>（项目级）或 <code>~/.claude/mcp.json</code>（用户级），
+  支持 scope 级别的配置隔离。</p>
+</section>
+
+<section class="section" id="cmd-review">
+<h2 class="section-title"><span class="icon">📝</span> /review — 代码审查 <span class="num">34.5</span></h2>
+
+<p><code>/review</code> 命令（4 文件）执行 AI 驱动的代码审查。它通过 <code>git diff</code> 提取变更集，
+  构建结构化 prompt（包含文件变更、上下文行、commit 信息），然后触发模型进行审查。
+  审查结果以 markdown 格式输出，包含问题描述、severity 分级、修复建议。
+  支持 <code>--pr</code> 参数直接审查 GitHub PR，通过 GitHub API 获取 PR diff。</p>
+</section>
+
+<section class="section" id="cmd-clear">
+<h2 class="section-title"><span class="icon">🧹</span> /clear — 上下文清理 <span class="num">34.6</span></h2>
+
+<p><code>/clear</code> 命令（4 文件）实现会话上下文的智能清理。不是简单的消息清空——
+  它保留了 system prompt、工具注册、权限状态等基础设施，只清除对话历史。
+  支持 <code>--preserve-tools</code> 保留工具状态、<code>--soft</code> 只清除 token 超限的旧消息。
+  清理后触发 <code>onClear</code> Hook，允许插件在清理时执行自定义逻辑（如重置缓存状态）。</p>
+</section>
+
+<section class="section" id="cmd-extra-usage">
+<h2 class="section-title"><span class="icon">📊</span> /extra-usage — 用量管理 <span class="num">34.7</span></h2>
+
+<p><code>/extra-usage</code> 命令（4 文件）管理 Claude Max 订阅的额外用量购买和监控。
+  通过 API 查询当前 token 消耗、剩余配额、计费周期，显示为可视化的 ASCII 进度条。
+  支持 <code>--buy</code> 触发额外用量购买流程（跳转到 Anthropic Console），
+  <code>--history</code> 查看历史用量趋势。所有数据通过 <code>userBillingInfo</code> API 获取，
+  本地缓存 5 分钟避免频繁请求。</p>
+</section>
+
+<section class="section" id="cmd-context">
+<h2 class="section-title"><span class="icon">📐</span> /context — 上下文用量分析（412行） <span class="num">34.8</span></h2>
+
+<p><code>/context</code> 命令（3 文件/412行）是 Claude Code 的<strong>上下文窗口 X 光机</strong>——
+  它精确计算当前对话占用了多少 token，并按类别分解展示。</p>
+
+<table>
+  <thead><tr><th>分析维度</th><th>内容</th><th>展示格式</th></tr></thead>
+  <tbody>
+    <tr><td><strong>主分类</strong></td><td>System Prompt / Messages / Tools / Free Space</td><td>token 数 + 百分比表格</td></tr>
+    <tr><td><strong>MCP 工具</strong></td><td>每个 MCP 工具的 schema token 消耗</td><td>按 server 分组表格</td></tr>
+    <tr><td><strong>Memory 文件</strong></td><td>CLAUDE.md / .claude/settings 等</td><td>type + path + tokens</td></tr>
+    <tr><td><strong>Skills</strong></td><td>已加载技能的 frontmatter token</td><td>skill name + source</td></tr>
+    <tr><td><strong>Agents</strong></td><td>自定义 Agent 定义占用</td><td>agentType + scope + tokens</td></tr>
+    <tr><td><strong>Context Collapse</strong></td><td>已压缩 span 数 + 错误统计</td><td>策略状态指示器</td></tr>
+  </tbody>
+</table>
+
+<p>关键实现：调用 <code>analyzeContextUsage()</code> 前先执行 <code>microcompactMessages()</code> +
+  <code>projectView()</code> + <code>getMessagesAfterCompactBoundary()</code>，确保统计的是模型<strong>实际看到的</strong>
+  token 数，而非原始消息的 token 数。</p>
+</section>
+
+<section class="section" id="cmd-compact">
+<h2 class="section-title"><span class="icon">🗜️</span> /compact — 智能上下文压缩（302行） <span class="num">34.9</span></h2>
+
+<p><code>/compact</code> 命令（2 文件/302行）触发手动上下文压缩。与自动 autocompact 不同，
+  手动压缩允许用户指定 <strong>保留焦点</strong>（如 "保留最近的代码修改"），引导压缩引擎优先保留相关内容。
+  压缩流程：1) 标记 compact boundary → 2) 生成摘要 prompt → 3) 模型压缩旧消息 →
+  4) 替换为压缩后的 SystemMessage。压缩后 token 使用量通常降低 60-80%。</p>
+</section>
+
+<section class="section" id="cmd-add-dir">
+<h2 class="section-title"><span class="icon">📂</span> /add-dir — 工作目录管理 <span class="num">34.10</span></h2>
+
+<p><code>/add-dir</code> 命令（3 文件/246行）动态扩展 Claude Code 的工作目录范围。
+  添加的目录会被注入到 <code>toolPermissionContext.additionalDirectories</code>，
+  使 BashTool/FileReadTool 等工具能访问项目根目录之外的路径。
+  安全约束：添加的目录不能包含系统敏感路径（/etc、/usr 等），
+  且需要通过 realpath 解析符号链接防止路径遍历攻击。</p>
+</section>
+
+<section class="section" id="cmd-remote-setup">
+<h2 class="section-title"><span class="icon">🌐</span> /remote-setup — 远程开发配置 <span class="num">34.11</span></h2>
+
+<p><code>/remote-setup</code> 命令（3 文件/388行）配置 Claude Code 的远程开发环境连接。
+  支持 SSH 隧道、VS Code Remote、GitHub Codespaces 等模式。核心职责是设置
+  <code>REMOTE_HOST</code> 和 <code>REMOTE_PORT</code> 环境变量，使工具层的文件操作和 Shell 执行
+  透明地代理到远程机器。配置持久化到 <code>~/.claude/remote.json</code>，
+  下次启动时自动恢复连接。</p>
+</section>
+
+<section class="section" id="cmd-memory">
+<h2 class="section-title"><span class="icon">🧠</span> /memory — 记忆管理 <span class="num">34.12</span></h2>
+
+<p><code>/memory</code> 命令（2 文件/99行）管理 Claude Code 的长期记忆文件（CLAUDE.md）。
+  支持查看当前加载的记忆内容、按 scope 分层展示（project/user/global）、
+  以及直接编辑记忆文件。记忆文件在每次对话开始时自动加载为 System Prompt 的一部分，
+  因此修改记忆等效于修改 AI 的"默认知识"。</p>
+</section>
+
+<section class="section" id="cmd-doctor">
+<h2 class="section-title"><span class="icon">🩺</span> /doctor — 环境诊断 <span class="num">34.13</span></h2>
+
+<p><code>/doctor</code> 命令（2 文件）执行全面的环境健康检查：Node.js 版本、Git 配置、
+  API 连接、MCP 服务器状态、插件加载状态、认证有效性等。输出标准化的
+  ✅/❌/⚠️ 状态列表，帮助用户快速排查 "为什么不工作了" 类问题。</p>
+</section>
+
+<section class="section" id="cmd-diff">
+<h2 class="section-title"><span class="icon">📊</span> /diff — 变更可视化 <span class="num">34.14</span></h2>
+
+<p><code>/diff</code> 命令（2 文件）展示当前会话中 Claude 所做的所有文件修改。
+  通过 <code>git diff</code> 提取变更，以语法高亮的 diff 格式渲染到终端。
+  支持 <code>--stat</code> 统计模式（只显示文件名和增删行数）和 <code>--staged</code> 过滤。</p>
+</section>
+
+<section class="section" id="cmd-export">
+<h2 class="section-title"><span class="icon">💾</span> /export — 会话导出 <span class="num">34.15</span></h2>
+
+<p><code>/export</code> 命令（2 文件/101行）将当前会话导出为 markdown 或 JSON 格式。
+  导出内容包括完整的消息历史、工具调用记录、token 统计。
+  JSON 格式保留完整的结构化数据（工具 input/output schema），
+  markdown 格式更适合人类阅读和分享。导出文件默认保存到项目根目录。</p>
+</section>
+
+<section class="section" id="cmd-cost">
+<h2 class="section-title"><span class="icon">💰</span> /cost — 费用统计 <span class="num">34.16</span></h2>
+
+<p><code>/cost</code> 命令（2 文件/47行）显示当前会话的 API 费用统计。
+  按模型分别统计 input/output token 消耗，乘以对应价格计算费用。
+  支持多模型会话（如 Sonnet + Opus 混用时分别统计）。</p>
+</section>
+
+<section class="section" id="cmd-rename">
+<h2 class="section-title"><span class="icon">✏️</span> /rename — 会话重命名 <span class="num">34.17</span></h2>
+
+<p><code>/rename</code> 命令（3 文件）修改当前会话的显示名称。名称持久化到会话元数据，
+  在 <code>--resume</code> 列表中显示，帮助用户区分多个历史会话。
+  支持自动生成名称（基于首条消息的摘要）和手动指定。</p>
+</section>
+
+<section class="section" id="const-prompts">
+<h2 class="section-title"><span class="icon">🧠</span> prompts.ts — 系统提示词组装引擎（914行/54KB） <span class="num">37</span></h2>
+
+<p><code>constants/prompts.ts</code> 是整个 Claude Code 的 <strong>「大脑蓝图」</strong>——914 行代码决定了
+  AI 如何理解自己的角色、能使用哪些工具、如何与用户交互、安全红线在哪里。</p>
+
+<h3 id="const-prompts-arch">37.1 双区架构（Static / Dynamic）</h3>
+
+<p>系统提示词被一个关键标记 <code>SYSTEM_PROMPT_DYNAMIC_BOUNDARY</code> 分为两个区域：</p>
+
+<table>
+  <thead><tr><th>区域</th><th>内容</th><th>缓存策略</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Static 区</strong>（边界前）</td><td>角色定义、安全规则、工具使用指南、代码风格</td><td><code>cacheScope: 'global'</code> — 跨组织共享</td></tr>
+    <tr><td><strong>Dynamic 区</strong>（边界后）</td><td>环境信息、记忆文件、MCP 指令、语言偏好</td><td>per-session — 不缓存或 session 级缓存</td></tr>
+  </tbody>
+</table>
+
+<h3 id="const-prompts-sections">37.2 Section 注册系统</h3>
+<p>Dynamic 区使用 <code>systemPromptSection()</code> 和 <code>DANGEROUS_uncachedSystemPromptSection()</code>
+  两种注册器。前者的内容在首次求值后缓存，后者每次都重新计算
+  （用于可能在 turn 间变化的内容，如 MCP 连接状态）。</p>
+
+<h3 id="const-prompts-key-sections">37.3 核心 Section 清单</h3>
+<table>
+  <thead><tr><th>Section</th><th>函数</th><th>内容</th></tr></thead>
+  <tbody>
+    <tr><td><strong>intro</strong></td><td>getSimpleIntroSection()</td><td>角色定义 + 安全红线（CYBER_RISK_INSTRUCTION）</td></tr>
+    <tr><td><strong>system</strong></td><td>getSimpleSystemSection()</td><td>权限模式说明 + Hook 规则 + system-reminder 标签</td></tr>
+    <tr><td><strong>doing_tasks</strong></td><td>getSimpleDoingTasksSection()</td><td>代码风格（不过度设计、不添加无用注释、安全优先）</td></tr>
+    <tr><td><strong>actions</strong></td><td>getActionsSection()</td><td>不可逆操作确认规则（git push/rm -rf 等）</td></tr>
+    <tr><td><strong>using_tools</strong></td><td>getUsingYourToolsSection()</td><td>工具优先级（FileRead > cat, FileEdit > sed）</td></tr>
+    <tr><td><strong>output_efficiency</strong></td><td>getOutputEfficiencySection()</td><td>输出简洁性指导（ant 版 vs 外部版差异巨大）</td></tr>
+    <tr><td><strong>session_guidance</strong></td><td>getSessionSpecificGuidanceSection()</td><td>Agent/Skill/Fork 使用指导（按 enabledTools 动态）</td></tr>
+    <tr><td><strong>token_budget</strong></td><td>feature('TOKEN_BUDGET')</td><td>Token 预算模式指导</td></tr>
+    <tr><td><strong>brief</strong></td><td>getBriefSection()</td><td>Kairos Brief 模式输出格式</td></tr>
+  </tbody>
+</table>
+
+<h3 id="const-prompts-ant">37.4 Ant vs External 差异</h3>
+<p><code>process.env.USER_TYPE === 'ant'</code> 控制了大量内部专有行为：</p>
+<ul>
+  <li><strong>评论规则</strong>：Ant 版默认「不写注释」+ 只在 WHY 非显然时添加</li>
+  <li><strong>验证要求</strong>：Ant 版要求「完成任务前先验证」（跑测试/执行脚本）</li>
+  <li><strong>输出风格</strong>：Ant 版 400+ 字的「反转金字塔」写作指导 vs 外部版简短的「be concise」</li>
+  <li><strong>诚实报告</strong>：Ant 版强制「如实汇报结果，不美化失败」</li>
+  <li><strong>Undercover 模式</strong>：内部测试时隐藏所有模型名称/ID</li>
+</ul>
+</section>
+
+<section class="section" id="const-api-limits">
+<h2 class="section-title"><span class="icon">📏</span> apiLimits.ts — API 硬限制常量 <span class="num">37.5</span></h2>
+
+<p><code>constants/apiLimits.ts</code>（95行）定义了 Anthropic API 的客户端硬限制——
+  这些值直接来源于 API 服务端代码（<code>api/api/schemas/</code>），客户端提前校验以避免
+  服务端拒绝请求时返回令人困惑的错误信息。</p>
+
+<table>
+  <thead><tr><th>限制</th><th>值</th><th>说明</th></tr></thead>
+  <tbody>
+    <tr><td><strong>图片 Base64</strong></td><td>5 MB</td><td>API 拒绝超过此大小的 base64 字符串</td></tr>
+    <tr><td><strong>图片分辨率</strong></td><td>2000×2000</td><td>客户端缩放上限（API 内部在 1568px 再缩）</td></tr>
+    <tr><td><strong>PDF 原始大小</strong></td><td>20 MB → ~27 MB base64</td><td>给 32 MB 总请求限制留余量</td></tr>
+    <tr><td><strong>PDF 页数</strong></td><td>100 页</td><td>API 硬限制</td></tr>
+    <tr><td><strong>PDF 提取阈值</strong></td><td>3 MB</td><td>超过此大小改用页面图片提取</td></tr>
+    <tr><td><strong>媒体数量</strong></td><td>100/请求</td><td>图片 + PDF 总数上限</td></tr>
+  </tbody>
+</table>
+</section>
+
+<section class="section" id="cmd-thinkback">
+<h2 class="section-title"><span class="icon">🧠</span> /thinkback — 思维回放系统（566行） <span class="num">44</span></h2>
+
+<p><code>/thinkback</code> 是 Claude Code 的独特功能——回放 AI 的思考过程。
+  它依赖 <strong>thinkback 插件</strong>（通过 Marketplace 安装），提供完整的安装引导和回放 UI。</p>
+
+<h3>44.1 架构</h3>
+<table>
+  <thead><tr><th>组件</th><th>职责</th></tr></thead>
+  <tbody>
+    <tr><td><strong>getThinkbackSkillDir()</strong></td><td>从已安装插件缓存中定位 thinkback skill 目录</td></tr>
+    <tr><td><strong>Marketplace 安装引导</strong></td><td>自动检测 → 提示安装 → 添加 Marketplace 源 → 安装插件</td></tr>
+    <tr><td><strong>回放引擎</strong></td><td>调用插件的 <code>thinkback</code> 命令执行思考过程可视化</td></tr>
+  </tbody>
+</table>
+<p>区分 <strong>ant 版本</strong>（claude-code-marketplace）和 <strong>外部版本</strong>（claude-plugins-official）的不同 Marketplace 源。</p>
+</section>
+
+<section class="section" id="cmd-terminal-setup">
+<h2 class="section-title"><span class="icon">⌨️</span> /terminal-setup — 终端环境配置（553行） <span class="num">45</span></h2>
+
+<p>终端环境自动检测与优化——确保 Claude Code 在各终端下获得最佳键盘体验。</p>
+
+<h3>45.1 核心能力</h3>
+<ul>
+  <li><strong>CSI u 检测</strong>：识别 Ghostty/Kitty/iTerm2/WezTerm 等原生支持终端</li>
+  <li><strong>Apple Terminal 配置</strong>：自动修改 plist 配置 + 备份/恢复机制</li>
+  <li><strong>Shell 补全安装</strong>：<code>setupShellCompletion()</code> 安装 zsh/bash/fish 补全脚本</li>
+  <li><strong>主题配置</strong>：终端颜色主题偏好设置</li>
+  <li><strong>Hyperlinks 检测</strong>：检查终端是否支持 OSC 8 超链接</li>
+</ul>
+</section>
+
+<section class="section" id="cmd-bridge">
+<h2 class="section-title"><span class="icon">🌉</span> /remote-control — Bridge 管理命令（534行） <span class="num">46</span></h2>
+
+<p><code>/remote-control</code>（也叫 <code>/bridge</code>）管理双向 Bridge 连接——
+  启用后在 AppState 中设置 <code>replBridgeEnabled</code>，触发 REPL.tsx 中的 <code>useReplBridge</code>。</p>
+
+<h3>46.1 功能</h3>
+<ul>
+  <li><strong>QR Code 生成</strong>：调用 <code>qrcode</code> 库生成可扫描的连接码</li>
+  <li><strong>Bridge 版本检查</strong>：<code>checkBridgeMinVersion</code> 确保客户端版本兼容</li>
+  <li><strong>EnvLess Bridge</strong>：无环境变量的 Bridge 模式（特性门控）</li>
+  <li><strong>Remote Callout</strong>：远程控制状态横幅显示</li>
+</ul>
+</section>
+
+<section class="section" id="cmd-copy">
+<h2 class="section-title"><span class="icon">📋</span> /copy — 对话复制命令（385行） <span class="num">47</span></h2>
+
+<p>将 Claude 的回复复制到剪贴板——支持多种格式输出和第 N 条消息选择。
+  实现了完整的 Markdown → 纯文本 → 剪贴板的渲染管线。</p>
+
+<h3>47.1 渲染管线</h3>
+<table>
+  <thead><tr><th>阶段</th><th>处理</th></tr></thead>
+  <tbody>
+    <tr><td><strong>消息定位</strong></td><td>从历史消息中查找第 N 条 assistant 消息（默认最后一条）</td></tr>
+    <tr><td><strong>格式选择</strong></td><td>通过 Select 组件选择输出格式（Raw Markdown / 纯文本 / HTML）</td></tr>
+    <tr><td><strong>Markdown 解析</strong></td><td>调用 <code>marked</code> 库解析 token 树，支持代码块、列表、表格等</td></tr>
+    <tr><td><strong>剪贴板写入</strong></td><td>优先使用 <code>OSC 52</code> 终端转义序列（跨 SSH 可用），降级到临时文件 + <code>pbcopy</code></td></tr>
+  </tbody>
+</table>
+
+<h3>47.2 设计要点</h3>
+<ul>
+  <li><strong>OSC 52 跨远程</strong>：通过终端转义序列直接操作本地剪贴板，无需 X11 forwarding</li>
+  <li><strong>stringWidth</strong>：正确计算 CJK 字符和 emoji 的显示宽度，用于格式化输出表格</li>
+  <li><strong>配置记忆</strong>：通过 <code>saveGlobalConfig</code> 持久化用户的格式偏好</li>
+  <li><strong>Byline 组件</strong>：在复制结果底部显示操作来源信息</li>
+</ul>
+</section>
+
+<section class="section" id="cmd-model">
+<h2 class="section-title"><span class="icon">🤖</span> /model — 模型切换命令（312行） <span class="num">48</span></h2>
+
+<p>交互式模型选择器——支持模型别名、1M context 访问检查、Fast Mode 联动。</p>
+<ul>
+  <li><strong>ModelPicker</strong> 组件：列出所有可用模型 + 别名解析</li>
+  <li><strong>Opus 1M / Sonnet 1M 检查</strong>：<code>checkOpus1mAccess</code> 验证用户权限</li>
+  <li><strong>Model Allowlist</strong>：组织级模型白名单过滤</li>
+  <li><strong>Fast Mode 联动</strong>：切换模型后自动清除 Fast Mode 冷却</li>
+  <li><strong>Extra Usage 提示</strong>：切换到高价模型时显示额外计费警告</li>
+</ul>
+</section>
+
+<section class="section" id="cmd-misc-deep">
+<h2 class="section-title"><span class="icon">🔧</span> 中型命令集合 <span class="num">49</span></h2>
+
+<p>以下命令均超过 200 行，有独立的业务逻辑：</p>
+
+<table>
+  <thead><tr><th>命令</th><th>行数</th><th>核心功能</th></tr></thead>
+  <tbody>
+    <tr><td><strong>/branch</strong></td><td>310</td><td>Git worktree 管理——创建隔离工作目录 + 独立会话</td></tr>
+    <tr><td><strong>/resume</strong></td><td>286</td><td>会话恢复——从 JSONL 或 Session ID 恢复对话上下文</td></tr>
+    <tr><td><strong>/chrome</strong></td><td>297</td><td>Chrome 浏览器集成——Puppeteer 控制 + 截图 + DOM 读取</td></tr>
+    <tr><td><strong>/fast</strong></td><td>294</td><td>Fast Mode 切换——使用轻量模型加速简单任务</td></tr>
+    <tr><td><strong>/mobile</strong></td><td>284</td><td>移动端 QR Code 连接——通过 Bridge 协议桥接手机</td></tr>
+    <tr><td><strong>/btw</strong></td><td>255</td><td>By-the-way 插入——在 Agent 工作期间注入新指令</td></tr>
+    <tr><td><strong>/rate-limit-options</strong></td><td>228</td><td>限速选项——展示当前速率限制与降级策略</td></tr>
+    <tr><td><strong>/tag</strong></td><td>226</td><td>会话标签——为对话添加可搜索的标签</td></tr>
+    <tr><td><strong>McpAuthTool</strong></td><td>215</td><td>MCP OAuth 认证——动态 Token 刷新与多服务器认证管理</td></tr>
+    <tr><td><strong>SyntheticOutputTool</strong></td><td>163</td><td>合成输出工具——JSON Schema 强制格式化 Agent 回复</td></tr>
+
+<h3>49.2 轻量命令（100-200行）</h3>
+<table>
+  <thead><tr><th>命令</th><th>行数</th><th>核心功能</th></tr></thead>
+  <tbody>
+    <tr><td><strong>/effort</strong></td><td>195</td><td>思考深度调节——控制 AI 推理强度（quick/thorough/exhaustive）</td></tr>
+    <tr><td><strong>TeamDeleteTool</strong></td><td>175</td><td>团队成员删除——优雅终止 tmux/进程内 Teammate</td></tr>
+    <tr><td><strong>/voice</strong></td><td>170</td><td>语音输入——集成系统麦克风 + Whisper 转写</td></tr>
+    <tr><td><strong>/rename</strong></td><td>166</td><td>会话重命名——支持自动生成标题</td></tr>
+    <tr><td><strong>/session</strong></td><td>155</td><td>会话切换——列表/选择/创建新会话</td></tr>
+    <tr><td><strong>/sandbox-toggle</strong></td><td>132</td><td>沙箱模式切换——OS 级隔离开关</td></tr>
+    <tr><td><strong>/plan</strong></td><td>132</td><td>规划模式——仅输出计划不执行工具</td></tr>
+    <tr><td><strong>/login</strong></td><td>117</td><td>OAuth 认证——API 密钥与令牌管理</td></tr>
+    <tr><td><strong>/color</strong></td><td>109</td><td>终端调色板测试——颜色能力检测</td></tr>
+    <tr><td><strong>/export</strong></td><td>101</td><td>会话导出——Markdown/JSON/JSONL 格式</td></tr>
+  </tbody>
+</table>
+
+<h3>49.3 微型命令（<100行）</h3>
+<p>以下 42 个命令各自 <100 行，均为单一功能的快捷操作：</p>
+<table>
+  <thead><tr><th>分类</th><th>命令列表</th></tr></thead>
+  <tbody>
+    <tr><td><strong>会话操作</strong></td><td>memory (99), logout (91), feedback (50), passes (45), exit (44)</td></tr>
+    <tr><td><strong>UI 定制</strong></td><td>vim (49), theme (66), output-style, stickers, good-claude</td></tr>
+    <tr><td><strong>系统诊断</strong></td><td>doctor, cost (47), stats, usage, status</td></tr>
+    <tr><td><strong>插件管理</strong></td><td>reload-plugins (79), privacy-settings (71), release-notes (61), upgrade (53)</td></tr>
+    <tr><td><strong>开发工具</strong></td><td>diff, issue, pr_comments (50), files, env, hooks, skills</td></tr>
+    <tr><td><strong>内部调试</strong></td><td>ant-trace, debug-tool-call, ctx_viz, mock-limits, heapdump, break-cache</td></tr>
+    <tr><td><strong>远程/移动</strong></td><td>desktop, remote-env, install-slack-app (42), thinkback-play (60)</td></tr>
+    <tr><td><strong>其他</strong></td><td>commands, config, agents, help, clear, onboarding, rewind, teleport, summary, share, permissions, oauth-refresh, reset-limits, perf-issue, autofix-pr, backfill-sessions, bughunter</td></tr>
+  </tbody>
+</table>
+
+<div class="tip tip-key">
+  <strong>🔑 设计模式：</strong>所有中大型命令都采用 <strong>lazy-load</strong> 模式——
+  <code>index.ts</code> 只暴露元数据（name/description），
+  真正的实现通过 <code>load: () => import('./xxx.js')</code> 按需加载，
+  避免 75+ 个命令的实现代码拖慢启动速度。
+</div>
+</section>
+
+</main>
+<button class="back-top" id="backTop" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button>
+<script src="js/main.js"></script>
+</body>
+</html>

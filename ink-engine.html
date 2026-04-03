@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ink 渲染引擎 — Claude Code v2.1.88 架构深度解析</title>
+<meta name="description" content="基于 Source Map 逆向还原的 Claude Code 架构核心概念与源码解析">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-jsx.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-tsx.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+<script type="module">
+import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+mermaid.initialize({startOnLoad:true,theme:"dark",themeVariables:{primaryColor:"#6d28d9",primaryTextColor:"#e2e8f0",primaryBorderColor:"#7c3aed",lineColor:"#7c3aed",secondaryColor:"#1e1b4b",tertiaryColor:"#0f172a"}});
+</script>
+<style>
+
+
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#05050a;--bg2:#0a0a16;--surface:rgba(20,20,38,.5);--surface2:rgba(35,35,65,.6);--border:rgba(255,255,255,.08);--border-hover:rgba(139,92,246,.5);--text:#f8fafc;--text2:#94a3b8;--text3:#64748b;--accent:#8b5cf6;--accent2:#6d28d9;--accent3:#c084fc;--green:#10b981;--blue:#3b82f6;--orange:#f59e0b;--red:#ef4444;--pink:#ec4899;--cyan:#06b6d4;--sidebar-w:280px;--header-h:64px}
+html{scroll-behavior:smooth;scroll-padding-top:80px}
+body{font-family:'Inter',system-ui,sans-serif;background-color:var(--bg);background-image:radial-gradient(circle at 15% 0%,rgba(139,92,246,.15) 0,transparent 30%),radial-gradient(circle at 85% 10%,rgba(6,182,212,.1) 0,transparent 30%);background-attachment:fixed;color:var(--text);line-height:1.7;overflow-x:hidden}
+::-webkit-scrollbar{width:6px}
+::-webkit-scrollbar-track{background:rgba(0,0,0,.2)}
+::-webkit-scrollbar-thumb{background:var(--surface2);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:var(--accent)}
+a{color:var(--accent3);text-decoration:none;transition:color .2s}
+a:hover{color:var(--cyan)}
+code{font-family:'JetBrains Mono',monospace}
+/* Header */
+.header{position:fixed;top:0;left:0;right:0;height:var(--header-h);background:rgba(5,5,10,.6);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 24px;z-index:100;gap:16px}
+.header .logo{font-size:22px;font-weight:900;letter-spacing:-.5px;background:linear-gradient(135deg,#c084fc,#38bdf8,#818cf8);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.header .version{font-size:12px;padding:2px 10px;border-radius:99px;background:var(--surface);color:var(--accent3);border:1px solid var(--border);font-weight:600;box-shadow:inset 0 1px 0 rgba(255,255,255,.1)}
+.header .search-box{flex:1;max-width:400px;margin-left:auto}
+.header .search-box input{width:100%;padding:10px 16px;border-radius:12px;border:1px solid var(--border);background:var(--surface);backdrop-filter:blur(10px);color:var(--text);font-size:14px;outline:none;transition:all .3s ease;box-shadow:inset 0 1px 2px rgba(0,0,0,.2)}
+.header .search-box input:focus{border-color:var(--accent);background:rgba(20,20,40,.8);box-shadow:0 0 0 4px rgba(139,92,246,.1)}
+.menu-btn{display:none;background:none;border:none;color:var(--text);font-size:24px;cursor:pointer}
+/* Sidebar */
+.sidebar{position:fixed;left:0;top:var(--header-h);bottom:0;width:var(--sidebar-w);background:rgba(10,10,22,.6);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-right:1px solid var(--border);overflow-y:auto;padding:20px 0;z-index:90;transition:transform .3s cubic-bezier(.4,0,.2,1)}
+.sidebar .nav-group{margin-bottom:12px}
+.sidebar .nav-group-title{padding:10px 20px;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:rgba(255,255,255,.3)}
+.sidebar .nav-item{display:block;padding:8px 20px 8px 28px;font-size:13px;font-weight:500;color:var(--text2);transition:all .25s ease;border-left:3px solid transparent;cursor:pointer}
+.sidebar .nav-item:hover{color:#fff;background:linear-gradient(90deg,var(--surface),transparent)}
+.sidebar .nav-item.active{color:var(--accent3);border-left-color:var(--accent);background:linear-gradient(90deg,rgba(139,92,246,.1),transparent);text-shadow:0 0 8px rgba(192,132,252,.3)}
+/* Main */
+.main{margin-left:var(--sidebar-w);margin-top:var(--header-h);padding:40px 60px 80px;max-width:1040px}
+/* Sections */
+.section{margin-bottom:80px;animation:fadeIn .6s cubic-bezier(.16,1,.3,1)}
+@keyframes fadeIn{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:translateY(0)}}
+.section-title{font-size:32px;font-weight:900;letter-spacing:-.5px;margin-bottom:32px;padding-bottom:16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;position:relative}
+.section-title::after{content:'';position:absolute;left:0;bottom:-1px;height:1px;width:100px;background:linear-gradient(90deg,var(--accent),transparent)}
+.section-title .icon{font-size:32px;filter:drop-shadow(0 0 12px rgba(139,92,246,.4))}
+.section-title .num{font-size:13px;padding:4px 12px;border-radius:99px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;font-weight:700;box-shadow:0 4px 12px rgba(109,40,217,.3)}
+h3{font-size:22px;font-weight:800;letter-spacing:-.3px;margin:36px 0 16px;background:linear-gradient(135deg,#fff,#cbd5e1);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+h4{font-size:16px;font-weight:700;margin:24px 0 10px;color:var(--accent3)}
+p{margin-bottom:16px;color:var(--text2);font-size:15px}
+ul,ol{margin:12px 0 20px 24px;color:var(--text2);font-size:15px}
+li{margin-bottom:6px}
+li::marker{color:var(--accent)}
+strong{color:#fff;font-weight:600}
+/* Cards */
+.card{background:var(--surface);backdrop-filter:blur(16px);border:1px solid var(--border);border-radius:16px;padding:24px;margin:20px 0;transition:all .4s cubic-bezier(.16,1,.3,1);box-shadow:0 4px 20px rgba(0,0,0,.2),inset 0 1px 0 rgba(255,255,255,.05)}
+.card:hover{transform:translateY(-4px);border-color:var(--border-hover);box-shadow:0 12px 40px rgba(0,0,0,.4),0 0 20px rgba(139,92,246,.15),inset 0 1px 0 rgba(255,255,255,.1)}
+.card-title{font-size:18px;font-weight:800;margin-bottom:12px;color:#fff}
+/* Stats Grid */
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin:24px 0}
+.stat-card{background:var(--surface);backdrop-filter:blur(16px);border:1px solid var(--border);border-radius:16px;padding:24px;text-align:center;transition:all .4s ease;box-shadow:inset 0 1px 0 rgba(255,255,255,.02)}
+.stat-card:hover{transform:translateY(-4px) scale(1.02);border-color:var(--border-hover);background:linear-gradient(180deg,rgba(35,35,65,.8),rgba(20,20,38,.5))}
+.stat-card .value{font-size:36px;font-weight:900;letter-spacing:-1px;background:linear-gradient(135deg,#c084fc,#38bdf8);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;filter:drop-shadow(0 2px 8px rgba(56,189,248,.3))}
+.stat-card .label{font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--text3);margin-top:8px}
+/* Table */
+table{width:100%;border-collapse:separate;border-spacing:0;margin:24px 0;font-size:14px;border-radius:12px;overflow:hidden;border:1px solid var(--border);background:var(--surface)}
+th{background:rgba(255,255,255,.03);padding:14px 18px;text-align:left;font-weight:700;color:var(--accent3);border-bottom:1px solid var(--border)}
+td{padding:14px 18px;border-bottom:1px solid var(--border);color:var(--text2)}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:rgba(255,255,255,.02)}
+/* Code blocks / Collapsible */
+pre[class*="language-"]{border-radius:12px!important;margin:16px 0!important;border:1px solid var(--border)!important;font-size:13px!important;background:#0d0d16!important;box-shadow:inset 0 2px 10px rgba(0,0,0,.4)}
+.collapsible{margin:16px 0;border-radius:12px;overflow:hidden;border:1px solid var(--border);background:var(--surface);transition:border-color .3s;box-shadow:inset 0 1px 0 rgba(255,255,255,.05)}
+.collapsible:hover{border-color:var(--border-hover)}
+.collapsible-header{display:flex;align-items:center;gap:12px;padding:14px 20px;cursor:pointer;font-size:14px;font-weight:700;color:#fff;transition:all .3s;user-select:none;background:rgba(255,255,255,.02)}
+.collapsible-header:hover{background:rgba(255,255,255,.05)}
+.collapsible-header .arrow{transition:transform .3s cubic-bezier(.4,0,.2,1);font-size:12px;color:var(--text3)}
+.collapsible-header.open .arrow{transform:rotate(90deg);color:var(--accent3)}
+.collapsible-body{display:none;border-top:1px solid var(--border);background:#0d0d16}
+.collapsible-body.show{display:block;animation:slideDown .3s ease}
+@keyframes slideDown{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:translateY(0)}}
+.collapsible-body pre{margin:0!important;border:none!important;border-radius:0!important;box-shadow:none}
+/* Tags */
+.tag{display:inline-block;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:700;letter-spacing:.5px;margin:2px 4px 2px 0;text-transform:uppercase}
+.tag-purple{background:rgba(192,132,252,.15);color:#d8b4fe;border:1px solid rgba(192,132,252,.3)}
+.tag-green{background:rgba(16,185,129,.15);color:#6ee7b7;border:1px solid rgba(16,185,129,.3)}
+.tag-blue{background:rgba(59,130,246,.15);color:#93c5fd;border:1px solid rgba(59,130,246,.3)}
+.tag-orange{background:rgba(245,158,11,.15);color:#fcd34d;border:1px solid rgba(245,158,11,.3)}
+.tag-red{background:rgba(239,68,68,.15);color:#fca5a5;border:1px solid rgba(239,68,68,.3)}
+.tag-cyan{background:rgba(6,182,212,.15);color:#67e8f9;border:1px solid rgba(6,182,212,.3)}
+.tag-pink{background:rgba(236,72,153,.15);color:#f9a8d4;border:1px solid rgba(236,72,153,.3)}
+/* Mermaid */
+.mermaid{margin:24px 0;padding:24px;background:var(--surface);backdrop-filter:blur(10px);border:1px solid var(--border);border-radius:16px;overflow-x:auto;box-shadow:inset 0 1px 0 rgba(255,255,255,.05);transition:border-color .3s}
+.mermaid:hover{border-color:rgba(139,92,246,.3)}
+/* Tips */
+.tip{padding:16px 20px;border-radius:12px;margin:20px 0;font-size:14.5px;border:1px solid var(--border);border-left:4px solid;backdrop-filter:blur(10px)}
+.tip-info{background:rgba(59,130,246,.05);border-left-color:var(--blue);border-color:rgba(59,130,246,.2)}
+.tip-warn{background:rgba(245,158,11,.05);border-left-color:var(--orange);border-color:rgba(245,158,11,.2)}
+.tip-key{background:rgba(139,92,246,.05);border-left-color:var(--accent);border-color:rgba(139,92,246,.2);box-shadow:0 4px 20px rgba(139,92,246,.05)}
+/* Back to top */
+.back-top{position:fixed;bottom:32px;right:32px;width:48px;height:48px;border-radius:50%;background:linear-gradient(135deg,var(--accent2),var(--accent));color:#fff;border:none;font-size:22px;cursor:pointer;display:none;align-items:center;justify-content:center;box-shadow:0 8px 24px rgba(109,40,217,.4),inset 0 1px 0 rgba(255,255,255,.2);transition:all .3s cubic-bezier(.16,1,.3,1);z-index:99}
+.back-top:hover{transform:translateY(-6px);box-shadow:0 12px 32px rgba(109,40,217,.6),inset 0 1px 0 rgba(255,255,255,.3)}
+.back-top.show{display:flex}
+/* Responsive */
+@media(max-width:900px){
+.sidebar{transform:translateX(-100%)}
+.sidebar.open{transform:translateX(0)}
+.main{margin-left:0;padding:24px 20px 80px}
+.menu-btn{display:block}
+:root{--sidebar-w:260px}
+.section-title{font-size:26px}
+.stats-grid{grid-template-columns:1fr}
+}
+/* File tree */
+.file-tree{font-family:'JetBrains Mono',monospace;font-size:13px;background:rgba(10,10,16,.8);border:1px solid var(--border);border-radius:12px;padding:20px;margin:16px 0;line-height:1.9;box-shadow:inset 0 2px 10px rgba(0,0,0,.3)}
+.file-tree .dir{color:var(--accent3);font-weight:600}
+.file-tree .file{color:var(--text2)}
+.file-tree .comment{color:var(--text3);font-style:italic}
+/* Flow arrow */
+.flow-step{display:flex;align-items:center;gap:16px;margin:10px 0;padding:12px 20px;background:var(--surface);border:1px solid var(--border);border-radius:12px;font-size:14.5px;transition:transform .2s;box-shadow:inset 0 1px 0 rgba(255,255,255,.02)}
+.flow-step:hover{transform:translateX(4px);border-color:var(--border-hover)}
+.flow-step .step-num{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,var(--accent2),var(--accent));color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;flex-shrink:0;box-shadow:0 2px 8px rgba(109,40,217,.3)}
+.flow-arrow{text-align:center;color:var(--accent3);font-size:20px;margin:6px 0;opacity:.7}
+/* Inline code */
+:not(pre)>code{background:rgba(255,255,255,.05);padding:3px 8px;border-radius:6px;font-size:13px;color:#c084fc;border:1px solid rgba(255,255,255,.05)}
+
+
+</style>
+</head>
+<body>
+<header class="header">
+  <button class="menu-btn" onclick="document.querySelector('.sidebar').classList.toggle('open')">&#9776;</button>
+  <div class="logo"><a href="index.html">Claude Code 架构解析</a></div>
+  <span class="version">v2.1.88</span>
+  <div class="search-box"><input type="text" id="searchInput" placeholder="&#x1F50D; 搜索章节内容..." oninput="handleSearch(this.value)"></div>
+</header>
+<nav class="sidebar" id="sidebar">
+
+  <div class="nav-group">
+    <div class="nav-group-title">概览</div>
+    <a class="nav-item" href="index.html#overview">📋 项目概览</a>
+    <a class="nav-item" href="index.html#structure">📁 目录结构</a>
+    <a class="nav-item" href="index.html#arch">🏗️ 架构分层</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">核心引擎</div>
+    <a class="nav-item" href="core-engine.html#startup">🚀 启动流程</a>
+    <a class="nav-item" href="core-engine.html#tool-system">🔧 Tool 系统</a>
+    <a class="nav-item" href="core-engine.html#bash-security">🛡️ 安全沙箱</a>
+    <a class="nav-item" href="core-engine.html#query-loop">🔄 Query Loop</a>
+    <a class="nav-item" href="core-engine.html#query-engine">⚙️ QueryEngine</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">入口与引导</div>
+    <a class="nav-item" href="entrypoints.html#entrypoints">🚪 入口引导层</a>
+    <a class="nav-item" href="entrypoints.html#cli-bootstrap" style="padding-left:40px;font-size:12px;opacity:.7">↳ CLI Fast-Path</a>
+    <a class="nav-item" href="entrypoints.html#init-chain" style="padding-left:40px;font-size:12px;opacity:.7">↳ 初始化管线</a>
+    <a class="nav-item" href="entrypoints.html#mcp-server" style="padding-left:40px;font-size:12px;opacity:.7">↳ MCP Server</a>
+    <a class="nav-item" href="entrypoints.html#agent-sdk" style="padding-left:40px;font-size:12px;opacity:.7">↳ Agent SDK</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">子系统</div>
+    <a class="nav-item" href="subsystems.html#commands">💬 命令系统</a>
+    <a class="nav-item" href="subsystems.html#permissions">🔐 权限系统</a>
+    <a class="nav-item" href="subsystems.html#state">📦 状态管理</a>
+    <a class="nav-item" href="subsystems.html#api">🌐 API 通信</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">高级特性</div>
+    <a class="nav-item" href="advanced.html#coordinator">🤖 多Agent协调</a>
+    <a class="nav-item" href="advanced.html#mcp">🔌 MCP 集成</a>
+    <a class="nav-item" href="advanced.html#tasks">⚙️ 后台任务</a>
+    <a class="nav-item" href="advanced.html#plugins">📦 插件与技能</a>
+    <a class="nav-item" href="advanced.html#feature-flags">🚩 Feature Flags</a>
+    <a class="nav-item" href="context.html#context">🧠 上下文管理</a>
+    <a class="nav-item" href="context.html#ctx-search" style="padding-left:40px;font-size:12px;opacity:.7">↳ Grep vs RAG</a>
+    <a class="nav-item" href="context.html#ctx-memory" style="padding-left:40px;font-size:12px;opacity:.7">↳ 6层记忆体系</a>
+    <a class="nav-item" href="context.html#ctx-recall" style="padding-left:40px;font-size:12px;opacity:.7">↳ LLM 记忆召回</a>
+    <a class="nav-item" href="context.html#ctx-sysprompt" style="padding-left:40px;font-size:12px;opacity:.7">↳ System Prompt</a>
+    <a class="nav-item" href="context.html#ctx-decisions" style="padding-left:40px;font-size:12px;opacity:.7">↳ 设计决策表</a>
+    <a class="nav-item" href="ui-components.html#ui">🎨 UI 渲染</a>
+    <a class="nav-item" href="ui-components.html#ui-compiler" style="padding-left:40px;font-size:12px;opacity:.7">↳ React Compiler</a>
+    <a class="nav-item" href="ui-components.html#ui-messages" style="padding-left:40px;font-size:12px;opacity:.7">↳ 消息管线</a>
+    <a class="nav-item" href="ui-components.html#ui-virtual" style="padding-left:40px;font-size:12px;opacity:.7">↳ 虚拟滚动</a>
+    <a class="nav-item" href="ui-components.html#ui-fullscreen" style="padding-left:40px;font-size:12px;opacity:.7">↳ 全屏布局</a>
+    <a class="nav-item" href="ui-components.html#ui-perf" style="padding-left:40px;font-size:12px;opacity:.7">↳ 性能工程</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">基础设施</div>
+    <a class="nav-item" href="utils-infra.html#infra">🔩 基础设施</a>
+    <a class="nav-item" href="utils-infra.html#infra-session" style="padding-left:40px;font-size:12px;opacity:.7">↳ 会话持久化</a>
+    <a class="nav-item" href="utils-infra.html#infra-messages" style="padding-left:40px;font-size:12px;opacity:.7">↳ 消息系统</a>
+    <a class="nav-item" href="utils-infra.html#infra-hooks" style="padding-left:40px;font-size:12px;opacity:.7">↳ Hook 引擎</a>
+    <a class="nav-item" href="utils-infra.html#infra-config" style="padding-left:40px;font-size:12px;opacity:.7">↳ 配置与认证</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">React Hooks</div>
+    <a class="nav-item" href="hooks-system.html#hooks">🪝 React Hooks</a>
+    <a class="nav-item" href="hooks-system.html#hooks-input" style="padding-left:40px;font-size:12px;opacity:.7">↳ 输入管线</a>
+    <a class="nav-item" href="hooks-system.html#hooks-virtual" style="padding-left:40px;font-size:12px;opacity:.7">↳ 虚拟滚动</a>
+    <a class="nav-item" href="hooks-system.html#hooks-voice" style="padding-left:40px;font-size:12px;opacity:.7">↳ 语音子系统</a>
+    <a class="nav-item" href="hooks-system.html#hooks-collab" style="padding-left:40px;font-size:12px;opacity:.7">↳ 协作通信</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">渲染引擎</div>
+    <a class="nav-item" href="ink-engine.html#ink">🖼️ Ink 渲染引擎</a>
+    <a class="nav-item" href="ink-engine.html#ink-dom" style="padding-left:40px;font-size:12px;opacity:.7">↳ 自定义 DOM</a>
+    <a class="nav-item" href="ink-engine.html#ink-pipeline" style="padding-left:40px;font-size:12px;opacity:.7">↳ 渲染管线</a>
+    <a class="nav-item" href="ink-engine.html#ink-screen" style="padding-left:40px;font-size:12px;opacity:.7">↳ 屏幕缓冲区</a>
+    <a class="nav-item" href="ink-engine.html#ink-interact" style="padding-left:40px;font-size:12px;opacity:.7">↳ 全屏交互</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">插件系统</div>
+    <a class="nav-item" href="advanced.html#plugins">🔌 插件系统</a>
+    <a class="nav-item" href="advanced.html#plugins-loader" style="padding-left:40px;font-size:12px;opacity:.7">↳ 发现与加载</a>
+    <a class="nav-item" href="advanced.html#plugins-marketplace" style="padding-left:40px;font-size:12px;opacity:.7">↳ Marketplace</a>
+    <a class="nav-item" href="advanced.html#plugins-schema" style="padding-left:40px;font-size:12px;opacity:.7">↳ Schema 安全</a>
+    <a class="nav-item" href="advanced.html#plugins-lifecycle" style="padding-left:40px;font-size:12px;opacity:.7">↳ 验证生命周期</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">Bridge 通信</div>
+    <a class="nav-item" href="bridge.html#bridge">🌉 Bridge 通信</a>
+    <a class="nav-item" href="bridge.html#bridge-api" style="padding-left:40px;font-size:12px;opacity:.7">↳ 环境与轮询</a>
+    <a class="nav-item" href="bridge.html#bridge-repl" style="padding-left:40px;font-size:12px;opacity:.7">↳ REPL Bridge</a>
+    <a class="nav-item" href="bridge.html#bridge-messaging" style="padding-left:40px;font-size:12px;opacity:.7">↳ 消息路由</a>
+    <a class="nav-item" href="bridge.html#bridge-transport" style="padding-left:40px;font-size:12px;opacity:.7">↳ 传输与安全</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">核心服务层</div>
+    <a class="nav-item" href="services-deep.html#services">🔗 核心服务层</a>
+    <a class="nav-item" href="services-deep.html#svc-api" style="padding-left:40px;font-size:12px;opacity:.7">↳ API 通信核心</a>
+    <a class="nav-item" href="services-deep.html#svc-retry" style="padding-left:40px;font-size:12px;opacity:.7">↳ 重试引擎</a>
+    <a class="nav-item" href="services-deep.html#svc-errors" style="padding-left:40px;font-size:12px;opacity:.7">↳ 错误分类</a>
+    <a class="nav-item" href="services-deep.html#svc-mcp" style="padding-left:40px;font-size:12px;opacity:.7">↳ MCP 客户端</a>
+    <a class="nav-item" href="services-deep.html#svc-compact" style="padding-left:40px;font-size:12px;opacity:.7">↳ 上下文压缩</a>
+    <a class="nav-item" href="services-deep.html#svc-cache" style="padding-left:40px;font-size:12px;opacity:.7">↳ 缓存检测</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">工具系统</div>
+    <a class="nav-item" href="tools-deep.html#tools-system">🛠️ 工具系统</a>
+    <a class="nav-item" href="tools-deep.html#tools-bash" style="padding-left:40px;font-size:12px;opacity:.7">↳ BashTool 深剖</a>
+    <a class="nav-item" href="tools-deep.html#tools-panorama" style="padding-left:40px;font-size:12px;opacity:.7">↳ 38 工具全景</a>
+    <a class="nav-item" href="tools-deep.html#tools-client" style="padding-left:40px;font-size:12px;opacity:.7">↳ 多云客户端</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">权限与安全</div>
+    <a class="nav-item" href="tools-deep.html#perm-engine">🛡️ 权限决策引擎</a>
+    <a class="nav-item" href="tools-deep.html#perm-pipeline" style="padding-left:40px;font-size:12px;opacity:.7">↳ 决策管线</a>
+    <a class="nav-item" href="tools-deep.html#perm-yolo" style="padding-left:40px;font-size:12px;opacity:.7">↳ Auto Mode 分类器</a>
+    <a class="nav-item" href="tools-deep.html#perm-modes" style="padding-left:40px;font-size:12px;opacity:.7">↳ 权限模式</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">常量与命令</div>
+    <a class="nav-item" href="config-cmd.html#config-cmd">📜 常量与命令</a>
+    <a class="nav-item" href="config-cmd.html#config-constants" style="padding-left:40px;font-size:12px;opacity:.7">↳ 常量系统</a>
+    <a class="nav-item" href="config-cmd.html#config-commands" style="padding-left:40px;font-size:12px;opacity:.7">↳ 命令系统</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">Agent 与状态</div>
+    <a class="nav-item" href="agent-coord.html#agent-coord">🤖 Agent 协调层</a>
+    <a class="nav-item" href="agent-coord.html#agent-lifecycle" style="padding-left:40px;font-size:12px;opacity:.7">↳ 生命周期</a>
+    <a class="nav-item" href="agent-coord.html#agent-modes" style="padding-left:40px;font-size:12px;opacity:.7">↳ 多智能体模式</a>
+    <a class="nav-item" href="subsystems.html#state-ctx">📊 状态与上下文</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">CLI 与运行时</div>
+    <a class="nav-item" href="cli-transport.html#cli-transport">🖥️ CLI 与传输层</a>
+    <a class="nav-item" href="analytics-ff.html#analytics-ff">📈 分析与特性开关</a>
+    <a class="nav-item" href="model-shell.html#model-shell">🔧 模型与 Shell</a>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-title">类型与任务</div>
+    <a class="nav-item" href="types-tasks.html#type-system">📝 类型系统</a>
+    <a class="nav-item" href="types-tasks.html#task-migration">⚙️ 任务与迁移</a>
+  </div>
+
+</nav>
+<main class="main" id="mainContent">
+
+<section class="section" id="ink">
+<h2 class="section-title"><span class="icon">🖼️</span> Ink 渲染引擎 <span class="num">20</span></h2>
+
+<div class="tip tip-method">
+  <strong>🔬 方法论：</strong>本章对 <code>src/ink/</code>（93 文件 / 13,306+ 行）进行源码级深度分析。
+  核心文件：<code>ink.tsx</code>（1722行）· <code>render-node-to-output.ts</code>（1462行）· <code>selection.ts</code>（917行）·
+  <code>output.ts</code>（797行）· <code>parse-keypress.ts</code>（801行）· <code>dom.ts</code>（485行）·
+  <code>log-update.ts</code>（773行）· <code>styles.ts</code>（771行）。
+</div>
+
+<p><code>ink/</code> 不是简单的 Ink 框架使用——它是一个完全重写的 <strong>React → Terminal 渲染引擎</strong>。
+  它包含自定义 DOM 层、Yoga 布局引擎集成、双缓冲 Screen Buffer、DECSTBM 硬件滚动优化、
+  全屏文本选择/复制、BSU/ESU 原子更新、以及对 20+ 种终端协议的完整解析。</p>
+
+<!-- ── 20.1 自定义 DOM 层 ── -->
+<h3 id="ink-dom">20.1 自定义 DOM 层</h3>
+
+<p><code>dom.ts</code>（485行）定义了一套类似浏览器的 DOM 树，每个节点包含 Yoga 布局节点、样式、dirty 标记和滚动状态。</p>
+
+<h4>7 种节点类型</h4>
+<table>
+  <thead><tr><th>节点类型</th><th>Yoga 节点</th><th>职责</th></tr></thead>
+  <tbody>
+    <tr><td><code>ink-root</code></td><td>✅</td><td>根节点，持有 <code>focusManager</code> 和 <code>onRender</code> 回调</td></tr>
+    <tr><td><code>ink-box</code></td><td>✅</td><td>Flexbox 容器，支持 overflow/scroll/clip/noSelect/边框</td></tr>
+    <tr><td><code>ink-text</code></td><td>✅</td><td>文本容器，带 <code>measureTextNode</code> 自定义测量函数</td></tr>
+    <tr><td><code>ink-raw-ansi</code></td><td>✅</td><td>预渲染 ANSI 内容（如 ColorDiff），跳过 squash/wrap/style</td></tr>
+    <tr><td><code>ink-virtual-text</code></td><td>❌</td><td>虚拟文本（不占用布局空间）</td></tr>
+    <tr><td><code>ink-link</code></td><td>❌</td><td>OSC 8 超链接包装器</td></tr>
+    <tr><td><code>ink-progress</code></td><td>❌</td><td>进度条（无布局影响）</td></tr>
+    <tr><td><code>#text</code></td><td>❌</td><td>纯文本节点（nodeValue）</td></tr>
+  </tbody>
+</table>
+
+<h4>markDirty 上浮策略</h4>
+<p>任何 DOM 变更（setAttribute、setStyle、appendChild、removeChild、setTextNodeValue）都触发 <code>markDirty()</code>：</p>
+<ol>
+  <li><strong>抬升 dirty 标记</strong>：从当前节点向上遍历祖先链，所有 <code>DOMElement</code> 的 <code>dirty=true</code></li>
+  <li><strong>Yoga 标脏</strong>：仅在叶节点（<code>ink-text</code> 或 <code>ink-raw-ansi</code>）上调用 <code>yogaNode.markDirty()</code> — 触发重新测量</li>
+  <li><strong>shallowEqual 优化</strong>：<code>setStyle</code> 和 <code>setTextStyles</code> 会先比较新旧值，React 每次渲染创建新对象但值不变时不触发 markDirty</li>
+</ol>
+
+<h4>子节点移除清理</h4>
+<p><code>removeChildNode</code> 触发 <code>collectRemovedRects()</code>，递归收集被移除子树的缓存矩形区域，存入 <code>pendingClears</code> Map。渲染器在下一帧中读取并清空这些区域，防止幽灵内容残留。绝对定位节点的移除会额外标记 <code>fromAbsolute</code>，触发全局 blit 禁用防止覆盖幽灵。</p>
+
+<!-- ── 20.2 渲染管线 ── -->
+<h3 id="ink-pipeline">20.2 渲染管线</h3>
+
+<p><code>ink.tsx</code>（1722行）是整个渲染引擎的核心类，管理帧生命周期、React reconciler 挂载、双缓冲帧交换和终端 I/O。</p>
+
+<div class="mermaid">
+flowchart TD
+  RC["React Commit"] --> SL["scheduleRender\nthrottle 16ms"]
+  SL --> QM["queueMicrotask"]
+  QM --> OR["onRender()"]
+  OR --> YL["Yoga calculateLayout"]
+  YL --> RN["renderNodeToOutput\nblit/dirty descent"]
+  RN --> OG["Output.get()\n7 ops → Screen"]
+  OG --> SEL["Selection overlay"]
+  SEL --> DF["log-update.render()\ndiff + DECSTBM"]
+  DF --> OPT["optimize()\nmerge patches"]
+  OPT --> WR["writeDiffToTerminal\nBSU/ESU atomic"]
+  WR --> SWAP["frontFrame ↔ backFrame"]
+</div>
+
+<h4>帧调度机制</h4>
+<table>
+  <thead><tr><th>参数</th><th>值</th><th>设计理由</th></tr></thead>
+  <tbody>
+    <tr><td><code>FRAME_INTERVAL_MS</code></td><td>16ms</td><td>~60fps，与终端刷新率匹配</td></tr>
+    <tr><td>leading + trailing</td><td>throttle</td><td>第一次提交立即渲染 + 尾部收集批量变更</td></tr>
+    <tr><td>queueMicrotask</td><td>延迟 1 tick</td><td>等待 useLayoutEffect 提交游标声明（CJK IME 位置）</td></tr>
+    <tr><td>drain timer</td><td>FRAME_INTERVAL_MS >> 2</td><td>滚动 drain 帧 ~250fps（仅写 ~200 字节）</td></tr>
+    <tr><td>池复位</td><td>5 分钟</td><td>CharPool/HyperlinkPool 定期重置防止无界增长</td></tr>
+  </tbody>
+</table>
+
+<h4>renderNodeToOutput — blit 优先策略</h4>
+<p><code>render-node-to-output.ts</code>（1462行）遍历 DOM 树，对每个节点执行：</p>
+<ol>
+  <li><strong>blit 检查</strong>：<code>!node.dirty && cached.{x,y,w,h} === current && prevScreen</code> → 直接从上一帧复制像素</li>
+  <li><strong>clear 旧位置</strong>：当 <code>positionChanged</code> 时，先清除缓存的旧矩形区域</li>
+  <li><strong>零高度抑制</strong>：<code>height===0 && siblingSharesY()</code> → 跳过渲染防止同行兄弟节点幽灵叠加</li>
+  <li><strong>三种渲染路径</strong>：<code>ink-raw-ansi</code>（直接 write）、<code>ink-text</code>（squash+wrap+style）、<code>ink-box</code>（clip+scroll+子节点递归）</li>
+</ol>
+
+<h4>DECSTBM 硬件滚动</h4>
+<p>ScrollBox 的 <code>scrollTop</code> 变化时生成 <code>ScrollHint{top, bottom, delta}</code>，<code>log-update.ts</code> 利用它发出硬件滚动指令（CSI SU/SD）而非重写整个视口。两种 drain 策略根据终端类型自动选择：</p>
+<table>
+  <thead><tr><th>终端类型</th><th>检测方式</th><th>Drain 策略</th></tr></thead>
+  <tbody>
+    <tr><td><strong>xterm.js</strong>（VS Code）</td><td><code>XTVERSION</code> 探针 + <code>TERM_PROGRAM=vscode</code></td>
+      <td><code>≤5 → 全部</code>（慢点击秒响应），<code>(5,12) → step=2</code>，<code>≥12 → step=3</code>，<code>>30 → snap</code></td></tr>
+    <tr><td><strong>原生终端</strong>（iTerm2/Ghostty）</td><td>XTVERSION 非 xterm.js</td>
+      <td><code>max(4, floor(|pending|*3/4))</code>，capped at <code>innerHeight-1</code>（保证 DECSTBM 触发）</td></tr>
+  </tbody>
+</table>
+
+<h4>Follow-Scroll 文本选择同步</h4>
+<p>当 sticky scroll 触发 <code>scrollTop = maxScroll</code> 时，<code>consumeFollowScroll()</code> 返回 <code>{delta, viewportTop, viewportBottom}</code>。<code>ink.tsx</code> 使用它将活动的文本选择偏移 <code>-delta</code> 行，模拟原生终端行为（选择跟随文本向上移动，最终裁剪在视口顶部）。</p>
+
+<!-- ── 20.3 屏幕缓冲区与 Diff ── -->
+<h3 id="ink-screen">20.3 屏幕缓冲区与 Diff</h3>
+
+<p><code>output.ts</code>（797行）收集渲染树的写入操作，应用到 Screen Buffer；<code>log-update.ts</code>（773行）将前后帧 diff 生成终端输出。</p>
+
+<h4>7 种操作类型</h4>
+<table>
+  <thead><tr><th>操作</th><th>用途</th><th>关键细节</th></tr></thead>
+  <tbody>
+    <tr><td><code>write</code></td><td>将文本写入屏幕</td><td>支持 <code>softWrap[]</code> 标记软换行（复制时不插入 <code>\n</code>）</td></tr>
+    <tr><td><code>blit</code></td><td>从上一帧复制像素</td><td>TypedArray.set() 批量复制 + absoluteClears 排除</td></tr>
+    <tr><td><code>clear</code></td><td>清除旧节点区域</td><td>仅扩展 damage，不写入像素（buffer 已是零）</td></tr>
+    <tr><td><code>clip</code></td><td>设置裁剪区域</td><td>支持嵌套 <code>intersectClip</code>（内层不可超出外层）</td></tr>
+    <tr><td><code>unclip</code></td><td>弹出裁剪区域</td><td>栈式管理</td></tr>
+    <tr><td><code>shift</code></td><td>行移位</td><td>匹配 DECSTBM + SU/SD 硬件滚动</td></tr>
+    <tr><td><code>noSelect</code></td><td>标记不可选区域</td><td>最后应用，优先级高于 blit/write</td></tr>
+  </tbody>
+</table>
+
+<h4>charCache 行级缓存</h4>
+<p><code>writeLineToScreen</code> 为每行文本维护一个 <code>charCache</code>（上限 16384）：</p>
+<pre><code>// 缓存命中时跳过 tokenize + grapheme 聚簇
+let characters = charCache.get(line)
+if (!characters) {
+  characters = reorderBidi(
+    styledCharsWithGraphemeClustering(
+      styledCharsFromTokens(tokenize(line)), stylePool))
+  charCache.set(line, characters)
+}
+// styleId + hyperlink 每个 style run 只 intern 一次，而非每个字符
+// 80 字符 3 个 style run → 3 次 intern，而非 80 次</code></pre>
+
+<h4>CellWidth 4 种宽度类型</h4>
+<table>
+  <thead><tr><th>类型</th><th>用途</th></tr></thead>
+  <tbody>
+    <tr><td><code>Narrow</code></td><td>普通 ASCII/Latin 字符，占 1 单元</td></tr>
+    <tr><td><code>Wide</code></td><td>CJK/Emoji 等宽字符，占 2 单元</td></tr>
+    <tr><td><code>SpacerTail</code></td><td>宽字符的第 2 单元（选择时跳过）</td></tr>
+    <tr><td><code>SpacerHead</code></td><td>宽字符在行尾放不下时的占位空格</td></tr>
+  </tbody>
+</table>
+
+<h4>双缓冲帧交换 + BSU/ESU</h4>
+<p>Ink 类维护 <code>frontFrame</code>（当前屏幕）和 <code>backFrame</code>（上一帧）。每帧渲染后交换：</p>
+<ul>
+  <li><code>log-update.render(frontFrame, newFrame)</code> 生成 diff patches</li>
+  <li><code>optimize()</code> 合并相邻 patches 减少 write 调用</li>
+  <li>支持 <strong>DEC 2026</strong> 同步更新协议：<code>BSU</code>（Begin Synchronized Update）和 <code>ESU</code>（End）保证原子性</li>
+  <li>Alt-screen 每帧前缀 <code>CSI H</code> 重置光标（自愈外部 drift），后缀 <code>CSI row;1 H</code> parking 到底部</li>
+</ul>
+
+<!-- ── 20.4 全屏交互 ── -->
+<h3 id="ink-interact">20.4 全屏交互</h3>
+
+<p>全屏模式下，Claude Code 桰接了终端的所有输入/输出，自行实现了文本选择和键盘解析。</p>
+
+<h4>文本选择状态机</h4>
+<div class="mermaid">
+stateDiagram-v2
+  [*] --> 无选择
+  无选择 --> 单击 : mouseDown
+  单击 --> 拖拽中 : mouseMove
+  单击 --> 无选择 : mouseUp
+  拖拽中 --> 已选择 : mouseUp
+  已选择 --> 无选择 : Esc/clearSelection
+  无选择 --> 词选择 : doubleClick
+  无选择 --> 行选择 : tripleClick
+  词选择 --> 词扩展 : drag
+  行选择 --> 行扩展 : drag
+</div>
+
+<h4>拽出回弹机制（virtualRow）</h4>
+<p>当键盘滚动（PgUp/PgDn）将选择端点推出视口时：</p>
+<ol>
+  <li><code>virtualAnchorRow</code>/<code>virtualFocusRow</code> 记录真实（未 clamp）位置</li>
+  <li>显示位置 clamp 到视口边界，<code>col</code> 重置为边缘（0 或 width-1）</li>
+  <li>反向滚动时从 virtual 位置恢复，同时 pop <code>scrolledOffAbove/Below</code> 累积器</li>
+  <li>两端都超出同一边缘时自动 <code>clearSelection()</code>（防止 1-cell 幽灵高亮）</li>
+</ol>
+
+<h4>scrolledOff 累积器</h4>
+<p>拖拽滚动时，Screen Buffer 只保存当前视口。离屏文本通过 <code>captureScrolledRows()</code> 在滚动前捕获，存入：</p>
+<ul>
+  <li><code>scrolledOffAbove[]</code>（顶部离屏，newest 在末尾）+ 并行 <code>scrolledOffAboveSW[]</code>（软换行标记）</li>
+  <li><code>scrolledOffBelow[]</code>（底部离屏，newest 在头部）+ 并行 <code>scrolledOffBelowSW[]</code></li>
+  <li><code>getSelectedText()</code> 将 above + on-screen + below 拼接，使用 <code>joinRows()</code> 将软换行合并回逻辑行</li>
+</ul>
+
+<h4>键盘输入解析器</h4>
+<p><code>parse-keypress.ts</code>（801行）解析 6 大类终端序列：</p>
+<table>
+  <thead><tr><th>协议</th><th>正则/模式</th><th>用途</th></tr></thead>
+  <tbody>
+    <tr><td><strong>CSI u</strong>（Kitty）</td><td><code>/^\x1b\[(\d+)(?:;(\d+))?u/</code></td><td>现代键盘协议，支持 Ctrl+Shift 区分</td></tr>
+    <tr><td><strong>modifyOtherKeys</strong></td><td><code>/^\x1b\[27;(\d+);(\d+)~/</code></td><td>Ghostty/tmux 扩展键事件</td></tr>
+    <tr><td><strong>SGR 鼠标</strong></td><td><code>/^\x1b\[<(\d+);(\d+);(\d+)([Mm])$/</code></td><td>点击/拖拽/释放 + 滚轮分离</td></tr>
+    <tr><td><strong>XTVERSION</strong></td><td><code>/^\x1bP>\|(.*?)(?:\x07|\x1b\\)$/</code></td><td>终端类型探测（xterm.js vs 原生）</td></tr>
+    <tr><td><strong>DECRPM</strong></td><td><code>/^\x1b\[\?(\d+);(\d+)\$y$/</code></td><td>DEC 私有模式状态查询响应</td></tr>
+    <tr><td><strong>粘贴模式</strong></td><td><code>PASTE_START/END</code>（括号粘贴）</td><td>CSI 200~/201~ 包裹粘贴内容</td></tr>
+  </tbody>
+</table>
+
+<div class="tip tip-key">
+  <strong>🔑 一句话总结：</strong><code>ink/</code> 是 Claude Code 的 <strong>终端渲染引擎</strong>。自定义 DOM 层提供 7 种节点类型 + shallowEqual 脏标记优化；渲染管线通过 blit 跳过干净子树 + DECSTBM 硬件滚动实现 O(变化单元格) 的增量更新；屏幕缓冲区通过 charCache 行缓存 + BSU/ESU 原子更新保证零闪烁；全屏交互实现了完整的文本选择状态机（单击/双击/三击 + 拖拽滚动累积 + virtual-row 回弹）和 6 种终端协议解析器。这 93 个文件共同构建了一个媒体应用级别的终端渲染引擎。
+</div>
+
+</section>
+
+<!-- ==================== §21 PLUGIN SYSTEM ==================== -->
+
+
+</main>
+<button class="back-top" id="backTop" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button>
+<script src="js/main.js"></script>
+</body>
+</html>
