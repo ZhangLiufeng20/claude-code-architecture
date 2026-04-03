@@ -1,3 +1,5 @@
+[中文文档](./README_CN.md)
+
 # Claude Code v2.1.88 — Architecture Deep Dive
 
 > Source-level architectural documentation of Claude Code, reverse-engineered from its Source Map.
@@ -10,7 +12,7 @@ By extracting and analyzing the 60MB `cli.js.map` source map, we recovered **1,8
 
 ## 🌐 Live Demo
 
-**GitHub Pages**: [https://\<username\>.github.io/claude-code-architecture/](https://<username>.github.io/claude-code-architecture/)
+**GitHub Pages**: [https://zhangliufeng20.github.io/claude-code-architecture/](https://zhangliufeng20.github.io/claude-code-architecture/)
 
 ## 📊 Documentation Stats
 
